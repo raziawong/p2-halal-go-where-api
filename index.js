@@ -8,18 +8,40 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-const PORT_NUM = process.env.PORT || 3333;
+const port_num = process.env.PORT || 3388;
 
 const DB_REL = {
     name: 'muslim_go_where',
     countries: 'countries',
-    types: 'categories',
+    categories: 'categories',
+    articles: 'articles'
 };
 
 async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
 
-    app.get('/countries', async (req, res) => {
+    function sendSuccess(res, data) {
+        res.status(200);
+        res.json({ data, count: data.length });
+    }
+
+    function sendInvalidError(res, details) {
+        res.status(406);
+        res.json({ 
+            main: "Not Acceptable. Request has failed validation.",
+            details
+        });
+    }
+
+    function sendServerError(res, details) {
+        res.status(500);
+        res.json({
+            main: 'Internal Server Error. Please contact administrator.',
+            details
+        });
+    }
+
+    app.get('/countries', async(req, res) => {
         try {
             let criteria = {};
             if (req.query.code) {
@@ -39,19 +61,16 @@ async function main() {
                 'projection': {
                     'code': 1,
                     'name': 1
-            }}).toArray();
+                }
+            }).toArray();
 
-            res.status(200);
-            res.json({ data: countries });
+            sendSuccess(res, countries);
         } catch (err) {
-            res.status(500);
-            res.json({
-                message: 'Internal Server Error. Please contact administrator.'
-            });
+            sendServerError(res, "Error encountered while reading countries collection.");
         }
     });
 
-    app.get('/countries/cities', async (req, res) => {
+    app.get('/countries/cities', async(req, res) => {
         try {
             let criteria = {};
             if (req.query.code) {
@@ -66,7 +85,7 @@ async function main() {
                     '$options': 'i',
                 };
             }
-            if(req.query.city) {
+            if (req.query.city) {
                 criteria.cities = {
                     '$elemMatch': {
                         'name': {
@@ -82,10 +101,14 @@ async function main() {
                     'code': 1,
                     'name': 1,
                     'cities': 1
-            }}).toArray();
+                }
+            }).toArray();
 
-            res.status(200);
-            res.json({ data: countries });
+            sendSuccess(res, countries);
+        } catch (err) {
+            sendServerError(res, "Error encountered while reading countries collection.");
+        }
+    });
         } catch (err) {
             res.status(500);
             res.json({
