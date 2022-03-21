@@ -5,6 +5,7 @@ const { connect, getDB } = require("./MongoUtil");
 require("dotenv").config();
 
 const app = express();
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(cors());
 
@@ -18,8 +19,8 @@ const DB_REL = {
 };
 
 const REGEX = {
-    display_name: /[A-Za-zÀ-ȕ\s\-]/,
-    option_value: /[A-Za-z0-9\-]/
+    display_name: new RegExp(/[A-Za-zÀ-ȕ\s\-]/),
+    option_value: new RegExp(/[A-Za-z0-9\-]/)
 };
 
 async function main() {
@@ -46,7 +47,7 @@ async function main() {
         });
     }
 
-    async function getCountries({ code, name, city}, showCity = false) {
+    async function getCountries({ id, code, name, city}, showCity = false) {
         let criteria = {};
         let projection = {
             projection: {
@@ -59,6 +60,9 @@ async function main() {
             projection.projection.cities = 1;
         }
 
+        if (id) {
+            criteria._id = ObjectId(id);
+        }
         if (code) {
             criteria.code = {
                 $regex: code,
@@ -88,34 +92,49 @@ async function main() {
         return countries;
     }
 
-    async function validateCountries({ code, name, cities }, isNew = true) {
+    async function validateCountries({ id, code, name, cities }, isNew = true) {
         let validation = [];
-        let countries = await getCountries({code, name: null, cities: null});
 
-        if (!code) {
-            validation.push({ field: "code", error: "Country Code is required" });
-        } else if (code.length > 2) {
-            validation.push({
-                field: "code",
-                value: code,
-                error: "Country Code must use ISO 3166-1 alpha-2",
-            });
-        } else if (isNew && countries.length) {
-            validation.push({
-                field: "code",
-                error: "Country Code already exists, please do update instead",
-            });
-        } else if (!isNew && !countries.length) {
-            validation.push({
-                field: "code",
-                value: code,
-                error: "Country Code does not exists, please do create instead",
-            });
+        if (isNew) {
+            let countries = await getCountries({id: null, code, name: null, cities: null});
+            if (!code) {
+                validation.push({ field: "code", error: "Country Code is required" });
+            } else if (code.length > 2) {
+                validation.push({
+                    field: "code",
+                    value: code,
+                    error: "Country Code must use ISO 3166-1 alpha-2",
+                });
+            } else if (countries.length) {
+                validation.push({
+                    field: "code",
+                    error: "Country Code already exists, please do update instead",
+                });
+            }
+            if (!cities) {
+                validation.push({
+                    field: "cities",
+                    error: "Country needs to have at least one city",
+                });
+            } 
+        } else {
+            let countries = await getCountries({id, code: null, name: null, cities: null});
+            if (!id) {
+                validation.push({
+                    field: "_id",
+                    value: id,
+                    error: "Category ID is required for update",
+                });
+            } else if (!countries.length) {
+                validation.push({
+                    field: "code",
+                    value: code,
+                    error: "Country does not exists, please do create instead",
+                });
+            }
         }
 
-        if (!name) {
-            validation.push({ field: "name", error: "Country Name is required" });
-        } else if (!REGEX.display_name.match(name)) {
+        if (name && !REGEX.display_name.test(name)) {
             validation.push({
                 field: "name",
                 value: name,
@@ -123,14 +142,9 @@ async function main() {
             });
         }
 
-        if (!cities) {
-            validation.push({
-                field: "cities",
-                error: "Country needs to have at least one city",
-            });
-        } else {
+        if (cities) {
             cities.map((c) => {
-                if (!REGEX.display_name.match(c.name)) {
+                if (!REGEX.display_name.test(c.name)) {
                     validation.push({
                         field: "cities",
                         value: c.name,
@@ -154,11 +168,11 @@ async function main() {
                 return c;
             });
         }
-
+        
         return validation;
     }
 
-    async function getCategories({ value, name, subtype }, showSub = false) {
+    async function getCategories({ id, value, name, subcat }, showSub = false) {
         let criteria = {};
         let projection = {
             projection: {
@@ -168,9 +182,12 @@ async function main() {
         };
 
         if (showSub) {
-            projection.projection.subtypes = 1;
+            projection.projection.subcats = 1;
         }
 
+        if (id) {
+            criteria._id = ObjectId(id);
+        }
         if (value) {
             criteria.value = {
                 $regex: value,
@@ -183,18 +200,18 @@ async function main() {
                 $options: "i",
             };
         }
-        if (subtype) {
-            criteria.subtypes = {
+        if (subcat) {
+            criteria.subcats = {
                 $elemMatch: {
                     $or: [{
                             name: {
-                                $regex: subtype,
+                                $regex: subcat,
                                 $options: "i",
                             }
                         },
                         {
                             value: {
-                                $regex: subtype,
+                                $regex: subcat,
                                 $options: "i",
                             }
                     }]
@@ -208,71 +225,81 @@ async function main() {
         return categories;
     }
 
-    async function validateCategories({ value, name, subtypes }, isNew = true) {
+    async function validateCategories({ id, value, name, subcats }, isNew = true) {
         let validation = [];
-        let categories = await getCategories({ value, name: null, subtypes: null });
 
-        if (!value) {
-            validation.push({ field: "value", error: "Category Value is required" });
-        } else {
-            if (!REGEX.option_value.test(value)) {
-                validation.push({
-                    field: "value",
-                    error: "Category Value cannot contain special characters and/or spaces",
-                });
-            }
-            if (isNew && categories.length) {
+        if (isNew) {
+            let categories = await getCategories({ value, name: null, subcats: null });
+            if (!value) {
+                validation.push({ field: "value", error: "Category Value is required" });
+            } else if (categories.length) {
                 validation.push({
                     field: "value",
                     error: "Category Value already exists, please do update instead",
                 });
-            } else if (!isNew && !categories.length) {
+            }
+
+            if (!name) {
+                validation.push({ field: "name", error: "Category Name is required" });
+            } 
+        } else {
+            let categories = await getCategories({ id, value: null, name: null, subcats: null });
+            if (!id) {
+                validation.push({
+                    field: "_id",
+                    value: id,
+                    error: "Category ID is required for update",
+                });
+            } else if (!categories.length) {
                 validation.push({
                     field: "value",
                     value: value,
-                    error: "Category Value does not exists, please do create instead",
+                    error: "Category does not exists, please do create instead",
                 });
             }
         }
 
-        if (!name) {
-            validation.push({ field: "name", error: "Category Name is required" });
-        } else if (!REGEX.display_name.match(name)) {
+        if (value && !REGEX.option_value.test(value)) {
+            validation.push({
+                field: "value",
+                error: "Category Value cannot contain special characters and/or spaces",
+            });
+        }
+        if (name && !REGEX.display_name.test(name)) {
             validation.push({
                 field: "name",
                 value: name,
                 error: "Category Name cannot contain special characters",
             });
         }
-
-        if (subtypes) {
-            subtypes.map(t => {
-                if (!REGEX.option_value.match(t.value)) {
+        if (subcats) {
+            subcats.map(t => {
+                if (!REGEX.option_value.test(t.value)) {
                     validation.push({
-                        field: "subtypes",
+                        field: "subcats",
                         value: t.value,
-                        error: "Sub-types Value cannot contain special characters and/or spaces",
+                        error: "Sub-categories Value cannot contain special characters and/or spaces",
                     });
                 }
-                if (!REGEX.display_name.match(t.name)) {
+                if (!REGEX.display_name.test(t.name)) {
                     validation.push({
-                        field: "subtypes",
+                        field: "subcats",
                         value: t.name,
-                        error: "Sub-types Name cannot contain special characters",
+                        error: "Sub-categories Name cannot contain special characters",
                     });
                 }
                 return t;
             });
         }
 
-        if (value && subtypes) {
-            subtypes.map(async (t) => {
-                let category = await getCategories({ value, name: null, subtypes: t.value });
+        if (value && subcats) {
+            subcats.map(async (t) => {
+                let category = await getCategories({ value, name: null, subcats: t.value });
                 if (category) {
                     validation.push({
-                        field: "subtypes",
+                        field: "subcats",
                         value: t.value,
-                        error: "Sub-types Value already exists in Category " + value,
+                        error: "Sub-categories Value already exists in Category " + value,
                     });
                 }
                 return c;
@@ -282,7 +309,13 @@ async function main() {
         return validation;        
     }
 
-    app.get("/countries", async(req, res) => {
+    async function deleteDocument(_id, collection) {
+        return await getDB().collection(collection).deleteOne({
+            _id: ObjectId(_id)
+        });
+    }
+
+    app.get("/countries", async function (req, res) {
         try {
             let countries = await getCountries(req.query);
             sendSuccess(res, countries);
@@ -294,7 +327,7 @@ async function main() {
         }
     });
 
-    app.post("/countries", async(req, res) => {
+    app.post("/countries", async function (req, res) {
         try {
             let validation = await validateCountries(req.body, true);
 
@@ -320,15 +353,19 @@ async function main() {
         }
     });
 
-    app.patch("/countries", async(req, res) => {
+    app.patch("/countries", async function (req, res) {
+        let { id } = req.query;
         try {
-            let validation = await validateCountries(req.body, false);
+            let validation = await validateCountries({id, ...req.body}, false);
 
             if (!validation.length) {
                 let { code, name, cities } = req.body;
                 let update = {
                     $set: {},
                 };
+                if (code) {
+                    update.$set.code = code;
+                }
                 if (name) {
                     update.$set.name = name;
                 }
@@ -344,7 +381,7 @@ async function main() {
 
                 let country = await getDB()
                     .collection(DB_REL.countries)
-                    .updateOne({ code: code }, update);
+                    .updateOne({ '_id': ObjectId(id) }, update);
                 sendSuccess(res, country);
             } else {
                 sendInvalidError(res, validation);
@@ -352,12 +389,27 @@ async function main() {
         } catch (err) {
             sendServerError(
                 res,
-                "Error encountered while adding to countries collection."
+                "Error encountered while patching"+ id +" in countries collection."
             );
         }
     });
 
-    app.get("/countries/cities", async(req, res) => {
+    app.delete("/countries", async function (req, res) {
+        let { id } = req.query;
+
+        try {
+            let doc = await deleteDocument(id, DB_REL.countries);
+            console.log(id);
+            sendSuccess(res, doc);
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while deleting "+ id +" in countries collection."
+            );
+        }
+    });
+
+    app.get("/countries/cities", async function (req, res) {
         try {
             let countries = await getCountries(req.query, true);
             sendSuccess(res, countries);
@@ -369,7 +421,7 @@ async function main() {
         }
     });    
 
-    app.get("/categories", async(req, res) => {
+    app.get("/categories", async function (req, res) {
         try {
             let categories = await getCategories(req.query);
             sendSuccess(res, categories);
@@ -381,15 +433,15 @@ async function main() {
         }
     });
 
-    app.post("/categories", async(req, res) => {
+    app.post("/categories", async function (req, res) {
         try {
             let validation = await validateCategories(req.body, true);
 
             if (!validation.length) {
-                let { value, name, subtypes } = req.body;
+                let { value, name, subcats } = req.body;
                 let categories = await getDB
                     .collection(DB_REL.categories)
-                    .insertOne({ value, name, subtypes });
+                    .insertOne({ value, name, subcats });
                 sendSuccess(res, categories);
             } else {
                 sendInvalidError(res, validation);
@@ -402,24 +454,28 @@ async function main() {
         }
     });
 
-    app.patch("/categories", async(req, res) => {
+    app.patch("/categories", async function (req, res) {
+        let { id } = req.query;
         try {
-            let validation = await validateCategories(req.body, false);
+            let validation = await validateCategories({id, ...req.body}, false);
 
             if (!validation.length) {
-                let { value, name, subtypes } = req.body;
+                let { value, name, subcats } = req.body;
                 let update = {
                     $set: {},
                 };
+                if (value) {
+                    update.$set.value = value;
+                }
                 if (name) {
                     update.$set.name = name;
                 }
-                if (subtypes) {
-                    update.$set.subtypes = subtypes;
+                if (subcats) {
+                    update.$set.subcats = subcats;
                 }
                 let categories = await getDB
                     .collection(DB_REL.categories)
-                    .updateOne({ value }, update);
+                    .updateOne({ '_id': ObjectId(id) }, update);
                 sendSuccess(res, categories);
             } else {
                 sendInvalidError(res, validation);
@@ -427,12 +483,26 @@ async function main() {
         } catch (err) {
             sendServerError(
                 res,
-                "Error encountered while adding to categories collection."
+                "Error encountered while patching "+ id +" in categories collection."
             );
         }
     });
 
-    app.get("/categories/sub", async(req, res) => {
+    app.delete("/categories", async function (req, res) {
+        let { id } = req.query;
+
+        try {
+            let doc = await deleteDocument(id, DB_REL.categories);
+            sendSuccess(res, doc);
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while deleting "+ id +" in categories collection."
+            );
+        }
+    });
+
+    app.get("/categories/sub", async function (req, res) {
         try {
             let categories = await getCategories(req.query, true);
             sendSuccess(res, categories);
@@ -442,7 +512,7 @@ async function main() {
                 "Error encountered while reading categories collection."
             );
         }
-    });
+    });    
 }
 
 main();
