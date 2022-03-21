@@ -76,7 +76,7 @@ async function main() {
             };
         }
         if (city) {
-            criteria.cities = {
+            let matchCrit = {
                 $elemMatch: {
                     name: {
                         $regex: city,
@@ -84,6 +84,11 @@ async function main() {
                     }
                 }
             };
+            criteria.cities = { matchCrit };
+
+            if (showCity) {
+                projection.projection.cities = { matchCrit };
+            }
         }
 
         let countries = await getDB()
@@ -96,7 +101,7 @@ async function main() {
         let validation = [];
 
         if (isNew) {
-            let countries = await getCountries({id: null, code, name: null, cities: null});
+            let countries = await getCountries({ code });
             if (!code) {
                 validation.push({ field: "code", error: "Country Code is required" });
             } else if (code.length > 2) {
@@ -118,7 +123,7 @@ async function main() {
                 });
             } 
         } else {
-            let countries = await getCountries({id, code: null, name: null, cities: null});
+            let countries = await getCountries({ id });
             if (!id) {
                 validation.push({
                     field: "_id",
@@ -127,8 +132,8 @@ async function main() {
                 });
             } else if (!countries.length) {
                 validation.push({
-                    field: "code",
-                    value: code,
+                    field: "_id",
+                    value: id,
                     error: "Country does not exists, please do create instead",
                 });
             }
@@ -146,7 +151,7 @@ async function main() {
             cities.map((c) => {
                 if (!REGEX.display_name.test(c.name)) {
                     validation.push({
-                        field: "cities",
+                        field: "cities.name",
                         value: c.name,
                         error: "City Name cannot contain special characters",
                     });
@@ -157,10 +162,10 @@ async function main() {
 
         if (code && cities) {
             cities.map(async (c) => {
-                let country = await getCountries(code, undefined, c.name);
+                let country = await getCountries({ code, city: c.name });
                 if (country) {
                     validation.push({
-                        field: "cities",
+                        field: "cities.name",
                         value: c.name,
                         error: "City Name already exists in Country " + code,
                     });
@@ -229,7 +234,7 @@ async function main() {
         let validation = [];
 
         if (isNew) {
-            let categories = await getCategories({ value, name: null, subcats: null });
+            let categories = await getCategories({ value });
             if (!value) {
                 validation.push({ field: "value", error: "Category Value is required" });
             } else if (categories.length) {
@@ -243,7 +248,7 @@ async function main() {
                 validation.push({ field: "name", error: "Category Name is required" });
             } 
         } else {
-            let categories = await getCategories({ id, value: null, name: null, subcats: null });
+            let categories = await getCategories({ id });
             if (!id) {
                 validation.push({
                     field: "_id",
@@ -252,8 +257,8 @@ async function main() {
                 });
             } else if (!categories.length) {
                 validation.push({
-                    field: "value",
-                    value: value,
+                    field: "_id",
+                    value: id,
                     error: "Category does not exists, please do create instead",
                 });
             }
@@ -276,14 +281,14 @@ async function main() {
             subcats.map(t => {
                 if (!REGEX.option_value.test(t.value)) {
                     validation.push({
-                        field: "subcats",
+                        field: "subcats.value",
                         value: t.value,
                         error: "Sub-categories Value cannot contain special characters and/or spaces",
                     });
                 }
                 if (!REGEX.display_name.test(t.name)) {
                     validation.push({
-                        field: "subcats",
+                        field: "subcats.name",
                         value: t.name,
                         error: "Sub-categories Name cannot contain special characters",
                     });
@@ -294,18 +299,18 @@ async function main() {
 
         if (value && subcats) {
             subcats.map(async (t) => {
-                let category = await getCategories({ value, name: null, subcats: t.value });
+                let category = await getCategories({ value, subcat: t.value });
                 if (category) {
                     validation.push({
-                        field: "subcats",
+                        field: "subcats.value",
                         value: t.value,
                         error: "Sub-categories Value already exists in Category " + value,
                     });
                 }
-                return c;
+                return t;
             });
         }
-
+        
         return validation;        
     }
 
@@ -439,7 +444,7 @@ async function main() {
 
             if (!validation.length) {
                 let { value, name, subcats } = req.body;
-                let categories = await getDB
+                let categories = await getDB()
                     .collection(DB_REL.categories)
                     .insertOne({ value, name, subcats });
                 sendSuccess(res, categories);
@@ -473,7 +478,7 @@ async function main() {
                 if (subcats) {
                     update.$set.subcats = subcats;
                 }
-                let categories = await getDB
+                let categories = await getDB()
                     .collection(DB_REL.categories)
                     .updateOne({ '_id': ObjectId(id) }, update);
                 sendSuccess(res, categories);
