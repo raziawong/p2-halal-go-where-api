@@ -9,7 +9,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(cors());
 
-const port_num = process.env.PORT || 3388;
+const portNum = process.env.PORT || 3388;
 
 const DB_REL = {
     name: "muslim_go_where",
@@ -19,12 +19,15 @@ const DB_REL = {
 };
 
 const REGEX = {
-    display_name: new RegExp(/[A-Za-zÀ-ȕ\s\-]/),
-    option_value: new RegExp(/[A-Za-z0-9\-]/)
+    displayName: new RegExp(/^[A-Za-zÀ-ȕ\s\-]*$/),
+    optionValue: new RegExp(/^[A-Za-z0-9\-]*$/),
+    email: new RegExp(/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/),
+    url: new RegExp(/^[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/)
 };
 
 async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
+    await createArticlesIndex();
 
     function sendSuccess(res, data) {
         res.status(200);
@@ -34,16 +37,16 @@ async function main() {
     function sendInvalidError(res, details) {
         res.status(406);
         res.json({
-            main: "Not Acceptable. Request has failed validation.",
-            details,
+            message: "Not Acceptable. Request has failed validation.",
+            details
         });
     }
 
     function sendServerError(res, details) {
         res.status(500);
         res.json({
-            main: "Internal Server Error. Please contact administrator.",
-            details,
+            message: "Internal Server Error. Please contact administrator.",
+            details
         });
     }
 
