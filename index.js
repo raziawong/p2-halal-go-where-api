@@ -693,10 +693,10 @@ async function main() {
 
             if (!validation.length) {
                 let { value, name, subcats } = req.body;
-                let categories = await getDB()
+                let category = await getDB()
                     .collection(DB_REL.categories)
                     .insertOne({ value, name, subcats });
-                sendSuccess(res, categories);
+                sendSuccess(res, category);
             } else {
                 sendInvalidError(res, validation);
             }            
@@ -730,10 +730,10 @@ async function main() {
                     });
                     update.$set.subcats = subcats;
                 }
-                let categories = await getDB()
+                let category = await getDB()
                     .collection(DB_REL.categories)
                     .updateOne({ '_id': ObjectId(id) }, update);
-                sendSuccess(res, categories);
+                sendSuccess(res, category);
             } else {
                 sendInvalidError(res, validation);
             }            
@@ -781,6 +781,62 @@ async function main() {
             sendServerError(
                 res,
                 "Error encountered while getting contributors in article " + id
+            );
+        }
+    });
+
+    app.post("/article", async function (req, res) {
+        try {
+            let validation = await validateArticle(req.body);
+
+            if (!validation.length) {
+                let { title, description, details, photos, tags, location, categories, allowPublic, contributor  } = req.body;
+                contributor.displayName = contributor.displayName || contributor.name;
+                contributor.isAuthor = true;
+                contributor.isLastMod = true;
+
+                let insert = {
+                    title,
+                    description,
+                    details: details || [],
+                    photos: photos || [],
+                    tags: tags || [],
+                    allowPublic: allowPublic || false,
+                    location,
+                    categories,
+                    createdDate: new Date(),
+                    lastModified: new Date(),
+                    contributor,
+                    rating: { avg: 0, count: 0 },
+                    comments: [],
+                    toDelete: false,
+                    isLock: false
+                };
+
+                let article = await getDB()
+                    .collection(DB_REL.articles)
+                    .insertOne(insert);
+                sendSuccess(res, article);
+            } else {
+                sendInvalidError(res, validation);
+            }         
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while adding to articles collection."
+            );
+        }
+    });
+    app.delete("/article", async function (req, res) {
+        let { id } = req.query;
+
+        try {
+            let doc = await deleteDocument(id, DB_REL.articles);
+            sendSuccess(res, doc);
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while deleting "+ id +" in articles collection."
             );
         }
     });
