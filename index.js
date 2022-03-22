@@ -25,6 +25,18 @@ const REGEX = {
     url: new RegExp(/^[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/)
 };
 
+const ERROR_TEMPLATE = {
+    required: field => `${field} is required`,
+    requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
+    special: field => `${field} cannot contain special characters`,
+    specialSpace: field => `${field} cannot contain special characters and/or spaces`,
+    length: (field, length) => `${field} cannot exceed ${length} characters including spaces`,
+    email: field => `${field} is not a valid email address`,
+    url: field => `${field} is not a valid URL`,
+    exists: (field, id, collection) => `${field} must be unique and it already exists, please do update on ${id} in ${collection} collection instead`,
+    notExist: (object, collection)  => `${object} does not exists, please do add to ${collection} collection instead`
+}
+
 async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
     await createArticlesIndex();
@@ -262,9 +274,7 @@ async function main() {
     }
 
     async function deleteDocument(_id, collection) {
-        return await getDB().collection(collection).deleteOne({
-            _id: ObjectId(_id)
-        });
+        return await getDB().collection(collection).deleteOne({ "_id": ObjectId(_id) });
     }
 
     async function validateCountry({ id, code, name, cities }, isNew = true) {
@@ -273,24 +283,27 @@ async function main() {
         if (isNew) {
             let countriesQ = await getCountries({ code });
             if (!code) {
-                validation.push({ field: "code", error: "Country Code is required" });
-            } else if (code.length > 2) {
+                validation.push({ 
+                    field: "code", 
+                    error: ERROR_TEMPLATE.required("Country Code")
+                });
+            } else if (code.length !== 2 || typeof code !== "string") {
                 validation.push({
                     field: "code",
                     value: code,
-                    error: "Country Code must use ISO 3166-1 alpha-2",
+                    error: "Country Code must use ISO 3166-1 alpha-2"
                 });
             } else if (countriesQ) {
                 validation.push({
                     field: "code",
                     value: code,
-                    error: "Country Code must be unique and it already exists, please do update on " + countries[0]._id + " in Countries collection instead",
+                    error: ERROR_TEMPLATE.exists("Country Code", countriesQ._id, DB_REL.countries)
                 });
             }
             if (!cities) {
                 validation.push({
                     field: "cities",
-                    error: "Country needs to have at least one city",
+                    error: ERROR_TEMPLATE.requiredDoc("Country", "City")
                 });
             }
         } else {
@@ -298,7 +311,7 @@ async function main() {
                 validation.push({
                     field: "_id",
                     value: id,
-                    error: "Category ID is required for update",
+                    error: ERROR_TEMPLATE.required("Category Id")
                 });
             } else {
                 let countriesQ = await getCountries({ id });
@@ -306,7 +319,7 @@ async function main() {
                     validation.push({
                         field: "_id",
                         value: id,
-                        error: "Country does not exists, please add to Countries collection instead",
+                        error: ERROR_TEMPLATE.notExist("Country", DB_REL.countries)
                     });
                 }
             }
@@ -315,7 +328,7 @@ async function main() {
             validation.push({
                 field: "name",
                 value: name,
-                error: "Country Name cannot contain special characters",
+                error: ERROR_TEMPLATE.special("Country Name")
             });
         }
 
@@ -332,7 +345,7 @@ async function main() {
                     validation.push({
                         field: "cities.name",
                         value: c.name,
-                        error: "City Name cannot contain special characters",
+                        error: ERROR_TEMPLATE.special("City Name")
                     });
                 }
                 if (countryCode) {
@@ -341,7 +354,7 @@ async function main() {
                         validation.push({
                             field: "cities.name",
                             value: c.name,
-                            error: "City Name already exists in Country " + countryCode,
+                            error: ERROR_TEMPLATE.exists("City Name", countryQ._id, DB_REL.countries)
                         });
                     }
                 }
@@ -357,25 +370,31 @@ async function main() {
 
         if (isNew) {
             if (!value) {
-                validation.push({ field: "value", error: "Category Value is required" });
+                validation.push({ 
+                    field: "value", 
+                    error: ERROR_TEMPLATE.required("Category Value")
+                });
             } else {
                 let categoriesQ = await getCategories({ value });
                 if (categoriesQ) {
                     validation.push({
                         field: "value",
-                        error: "Category Value already exists, please do update instead",
+                        error: ERROR_TEMPLATE.exists("Category Value", categoriesQ._id, DB_REL.categories)
                     });
                 }
             }
             if (!name) {
-                validation.push({ field: "name", error: "Category Name is required" });
+                validation.push({ 
+                    field: "name", 
+                    error: ERROR_TEMPLATE.required("Category Name")
+                });
             }
         } else {
             if (!id) {
                 validation.push({
                     field: "_id",
                     value: id,
-                    error: "Category ID is required for update",
+                    error: ERROR_TEMPLATE.required("Category Id")
                 });
             } else {
                 let categoriesQ = await getCategories({ id });
@@ -383,7 +402,7 @@ async function main() {
                     validation.push({
                         field: "_id",
                         value: id,
-                        error: "Category does not exists, please do create instead",
+                        error: ERROR_TEMPLATE.notExist("Category", DB_REL.categories)
                     });
                 }
             }
@@ -391,14 +410,14 @@ async function main() {
         if (value && !REGEX.optionValue.test(value)) {
             validation.push({
                 field: "value",
-                error: "Category Value cannot contain special characters and/or spaces",
+                error: ERROR_TEMPLATE.specialSpace("Category Value")
             });
         }
         if (name && !REGEX.displayName.test(name)) {
             validation.push({
                 field: "name",
                 value: name,
-                error: "Category Name cannot contain special characters",
+                error: ERROR_TEMPLATE.special("Category Name")
             });
         }
 
@@ -415,14 +434,14 @@ async function main() {
                     validation.push({
                         field: "subcats.value",
                         value: t.value,
-                        error: "Sub-categories Value cannot contain special characters and/or spaces",
+                        error: ERROR_TEMPLATE.specialSpace("Sub-categories Value")
                     });
                 }
                 if (!REGEX.displayName.test(t.name)) {
                     validation.push({
                         field: "subcats.name",
                         value: t.name,
-                        error: "Sub-categories Name cannot contain special characters",
+                        error: ERROR_TEMPLATE.special("Sub-categories Name")
                     });
                 }
                 if (categoryValue) {
@@ -431,7 +450,7 @@ async function main() {
                         validation.push({
                             field: "subcats.value",
                             value: t.value,
-                            error: "Sub-categories Value already exists in Category " + categoryValue,
+                            error: ERROR_TEMPLATE.exists("Sub-categories Value", categoryQ._id, DB_REL.categories)
                         });
                     }
                 }
@@ -448,34 +467,35 @@ async function main() {
         if (!title) {
             validation.push({ 
                 field: "title", 
-                error: "Article Title is required" 
+                error: ERROR_TEMPLATE.required("Article Title")
             });
         } else {
             if (title.length > 50) {
                 validation.push({ 
                     field: "title", 
                     value: title, 
-                    error: "Article Title cannot exceed 50 characters including spaces" 
+                    error: ERROR_TEMPLATE.length("Article Title", "50")
                 });
             }
             if (!REGEX.displayName.test(title)) {
                 validation.push({ 
                     field: "title", 
                     value: title, 
-                    error: "Article Title cannot contain special characters" 
+                    error: ERROR_TEMPLATE.special("Article Title") 
                 });
             }
         }
         if (!description) {
             validation.push({ 
                 field: "description", 
-                error: "Article Description is required" 
+                error: ERROR_TEMPLATE.required("Article Description")
             });
         } else if (description.length > 150) {
             validation.push({ 
                 field: "description", 
                 value: description, 
-                error: "Article Description cannot exceed 150 characters including spaces" });
+                error: ERROR_TEMPLATE.length("Article Description", "150")
+            });
         }
         if (photos) {
             photos.map(p => {
@@ -483,7 +503,7 @@ async function main() {
                     validation.push({ 
                         field: "photos.$", 
                         value: p, 
-                        error: "Article Photo URL is not a valid URL" 
+                        error: ERROR_TEMPLATE.url("Article Photo URL")
                     });
                 }
             });
@@ -494,7 +514,7 @@ async function main() {
                     validation.push({ 
                         field: "tags.$", 
                         value: t, 
-                        error: "Article Tag cannot contain special characters" 
+                        error: ERROR_TEMPLATE.special("Article Tag") 
                     });
                 }
             });
@@ -502,7 +522,7 @@ async function main() {
         if (!contributor) {
             validation.push({ 
                 field: "contributor", 
-                error: "Article Contributor object is required" 
+                error: ERROR_TEMPLATE.required("Article Contributor")
             });
         } else {
             let cName = contributor.name;
@@ -510,31 +530,32 @@ async function main() {
             if (!cName) {
                 validation.push({ 
                     field: "contributor.name", 
-                    error: "Article Contributor Name is required" 
+                    error: ERROR_TEMPLATE.required("Article Contributor Name")
                 });
             } else if (!REGEX.displayName.test(cName)) {
                 validation.push({ 
                     field: "contributor.name", 
                     value: cName, 
-                    error: "Article Contributor Name cannot contain special characters" 
+                    error: ERROR_TEMPLATE.special("Article Contributor Name")
                 });
             }
             if (!cEmail) {
                 validation.push({ 
                     field: "contributor.email", 
-                    error: "Article Contributor Email is required" });
+                    error: ERROR_TEMPLATE.required("Article Contributor Email")
+                });
             } else if (!REGEX.email.test(cEmail)) {
                 validation.push({ 
                     field: "contributor.email",
                      value: cEmail, 
-                     error: "Article Contributor Email is not a valid email address" 
-                    });
+                     error: ERROR_TEMPLATE.email("Article Contributor Email")
+                });
             }
         }
         if (!location) {
             validation.push({ 
                 field: "location", 
-                error: "Article Location object is required" 
+                error: ERROR_TEMPLATE.required("Article Location")
             });
         } else {
             let countryId = location.countryId;
@@ -543,7 +564,7 @@ async function main() {
             if (!countryId) {
                 validation.push({ 
                     field: "location.countryId", 
-                    error: "Article Location Country ID is required" 
+                    error: ERROR_TEMPLATE.required("Article Location Country Id")
                 });
             } else {
                 let countryQ = await getCountries({ id: countryId });
@@ -551,13 +572,13 @@ async function main() {
                     validation.push({ 
                         field: "location.countryId", 
                         value: countryId, 
-                        error: "Article Location Country ID is not valid" 
+                        error: ERROR_TEMPLATE.notExist("Article Location Country Id", DB_REL.countries)
                     });
                 } else {
                     if (!cityId) {
                         validation.push({ 
                             field: "location.cityId", 
-                            error: "Article Location City ID is required" 
+                            error: ERROR_TEMPLATE.required("Article Location City Id")
                         });
                     } else {
                         let cityQ = await getCountries({ id: countryId, city: cityId });
@@ -565,7 +586,7 @@ async function main() {
                             validation.push({ 
                                 field: "location.cityId", 
                                 value: cityId, 
-                                error: "Article Location City ID is not valid" 
+                                error: ERROR_TEMPLATE.notExist("Article Location City Id", DB_REL.countries)
                             });
                         }
                     }
@@ -574,14 +595,14 @@ async function main() {
             if (!address) {
                 validation.push({ 
                     field: "location.address", 
-                    error: "Article Location Address is required" 
+                    error: ERROR_TEMPLATE.required("Article Location Address")
                 });
             }
         }
         if (!categories) {
             validation.push({ 
                 field: "categories", 
-                error: "Article Categories object is required" 
+                error: ERROR_TEMPLATE.required("Article Categories")
             });
         } else {
             categories.map(async(c) => {
@@ -589,7 +610,7 @@ async function main() {
                 if (!catId) {
                     validation.push({ 
                         field: "categories.catId", 
-                        error: "Article Category ID is required" 
+                        error: ERROR_TEMPLATE.required("Article Category Id")
                     });
                 } else {
                     let categoryQ = await getCountries({ id: catId });
@@ -597,16 +618,16 @@ async function main() {
                         validation.push({ 
                             field: "categories.catId", 
                             value: catId, 
-                            error: "Article Category ID is not valid" 
+                            error: ERROR_TEMPLATE.notExist("Article Category Id", DB_REL.categories)
                         });
                     } else {
-                        c["subcatIds"].map(async(subcat) => {
+                        c.subcatIds.map(async(subcat) => {
                             let subCatQ = await getCountries({ id: catId, subcat });
                             if (ObjectId.isValid(s) || !subCatQ) {
                                 validation.push({ 
                                     field: "location.subcatIds", 
                                     value: subcat, 
-                                    error: "Article Sub-category ID is not valid" 
+                                    error: ERROR_TEMPLATE.notExist("Article Sub-category Id", DB_REL.categories)
                                 });
                             }
                         });
@@ -616,23 +637,23 @@ async function main() {
         }
         if (details) {
             details.map(d => {
-                if (!d["section_name"]) {
-                    validation.push({ field: 
-                        "details.section_name", 
-                        error: "Each Article Section requires a heading name" 
+                if (!d.sectionName) {
+                    validation.push({ 
+                        field: "details.sectionName", 
+                        error: ERROR_TEMPLATE.required("Article Section Name")
                     });
                 } else {
-                    if (!REGEX.displayName.test(d["section_name"])) {
+                    if (!REGEX.displayName.test(d.sectionName)) {
                         validation.push({ 
-                            field: "details.section_name", 
-                            value: d["section_name"], 
-                            error: "Article Section Name cannot contain special characters" 
+                            field: "details.sectionName", 
+                            value: d.sectionName, 
+                            error: ERROR_TEMPLATE.required("Article Section Name")
                         });
                     }
                     if (!d.content) {
                         validation.push({ 
                             field: "details.content", 
-                            error: "Each Article Section requires a content" 
+                            error: ERROR_TEMPLATE.required("Article Section Content")
                         });
                     }
                 }
@@ -839,21 +860,6 @@ async function main() {
         }
     });
 
-    app.get("/article/contributors", async function(req, res) {
-        let { email, id } = req.query;
-
-        if (ObjectId.isValid(id)) {
-            try {
-                let article = await getArticleContributors(id, email);
-                sendSuccess(res, article);
-            } catch (err) {
-                sendServerError(res, "Error encountered while getting contributors in article " + id);
-            }
-        } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
-        }
-    });
-
     app.post("/article", async function(req, res) {
         try {
             let validation = await validateArticle(req.body);
@@ -894,6 +900,32 @@ async function main() {
         }
     });
 
+    app.delete("/article", async function(req, res) {
+        let { id } = req.query;
+
+        try {
+            let doc = await deleteDocument(id, DB_REL.articles);
+            sendSuccess(res, doc);
+        } catch (err) {
+            sendServerError(res, "Error encountered while deleting " + id + " in articles collection.");
+        }
+    });
+
+    app.get("/article/contributors", async function(req, res) {
+        let { email, id } = req.query;
+
+        if (ObjectId.isValid(id)) {
+            try {
+                let article = await getArticleContributors(id, email);
+                sendSuccess(res, article);
+            } catch (err) {
+                sendServerError(res, "Error encountered while getting contributors in article " + id);
+            }
+        } else {
+            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+        }
+    });
+
     app.put("/article/rate", async function(req, res) {
         let { id, rating } = req.query;
 
@@ -903,20 +935,20 @@ async function main() {
 
                 if (!rating) {
                     validation.push({
-                        field: "avg",
-                        error: "Average rating is required",
+                        field: "rating",
+                        error: ERROR_TEMPLATE.required("Rating")
                     });
                 } else if (isNaN(rating)) {
                     validation.push({
-                        field: "avg",
+                        field: "rating",
                         value: rating,
-                        error: "Average rating must be of Number type",
+                        error: "Rating must be of number type",
                     });
                 } else if (rating < 0 || rating > 5) {
                     validation.push({
                         field: "avg",
                         value: rating,
-                        error: "Average rating cannot be less than 0 or more than 5",
+                        error: "Rating cannot be less than 0 or more than 5",
                     });
                 }
 
@@ -937,17 +969,6 @@ async function main() {
             }
         } else {
             sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
-        }
-    });
-
-    app.delete("/article", async function(req, res) {
-        let { id } = req.query;
-
-        try {
-            let doc = await deleteDocument(id, DB_REL.articles);
-            sendSuccess(res, doc);
-        } catch (err) {
-            sendServerError(res, "Error encountered while deleting " + id + " in articles collection.");
         }
     });
 }
