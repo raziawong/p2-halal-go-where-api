@@ -28,10 +28,11 @@ const REGEX = {
 const ERROR_TEMPLATE = {
     id: "Id is not a valid ObjectId",
     create: collection => `Error encountered while adding data to ${collection} collection`,
-    createDoc: (collection, document, id) => `Error encountered while adding ${document} data using parent Id ${id} to ${collection} collection`,
+    createDoc: (collection, document, id) => `Error encountered while adding ${document} data using parent (${id}) to ${collection} collection`,
     read: collection => `Error encountered while retrieving data from ${collection} collection`,
     readDoc: (collection, document, id) => `Error encountered while retrieving ${document} data using ${id} from ${collection} collection`,
     update: (collection, id) => `Error encountered while updating ${id} in ${collection} collection`,
+    updateDoc: (collection, childId, parentId) => `Error encountered while updating ${childId} data using parent (${parentId}) in ${collection} collection`,
     delete: (collection, id) => `Error encountered while deleting ${id} from ${collection} collection`,
     required: field => `${field} is required`,
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
@@ -697,15 +698,6 @@ async function main() {
         }
     });
 
-    app.get("/countries/cities", async function(req, res) {
-        try {
-            let countries = await getCountries(req.query, true);
-            sendSuccess(res, countries);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
-        }
-    });
-
     app.post("/country", async function(req, res) {
         try {
             let validation = await validateCountry(req.body, true);
@@ -730,11 +722,11 @@ async function main() {
     });
 
     app.put("/country", async function(req, res) {
-        let { id } = req.query;
+        let { countryId } = req.query;
 
-        if (ObjectId.isValid(id)) {
+        if (ObjectId.isValid(countryId)) {
             try {
-                let validation = await validateCountry({ id, ...req.body }, false);
+                let validation = await validateCountry({ id: countryId, ...req.body }, false);
 
                 if (!validation.length) {
                     let { name, cities } = req.body;
@@ -743,7 +735,7 @@ async function main() {
                         update.$set.name = name;
                     }
                     if (cities) {
-                        let countryQ = await getCountries({ id }, true);
+                        let countryQ = await getCountries({ id: countryId }, true);
                         cities = [...countryQ.cities, ...cities];
                         cities = cities.map((c) => {
                             if (!c._id) {
@@ -756,31 +748,130 @@ async function main() {
 
                     let country = await getDB()
                         .collection(DB_REL.countries)
-                        .updateOne({ '_id': ObjectId(id) }, update);
+                        .updateOne({ '_id': ObjectId(countryId) }, update);
                     sendSuccess(res, country);
                 } else {
                     sendInvalidError(res, validation);
                 }
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.update(DB_REL.countries, id));
+                sendServerError(res, ERROR_TEMPLATE.update(DB_REL.countries, countryId));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
         }
     });
 
     app.delete("/country", async function(req, res) {
-        let { id } = req.query;
+        let { countryId } = req.query;
 
-        if (ObjectId.isValid(id)) {
+        if (ObjectId.isValid(countryId)) {
             try {
-                let doc = await deleteDocument(id, DB_REL.countries);
+                let doc = await deleteDocument(countryId, DB_REL.countries);
+                sendSuccess(res, doc);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, countryId));
+            }
+        } else {
+            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
+        }
+    });
+
+    app.get("/cities", async function(req, res) {
+        try {
+            let countries = await getCountries(req.query, true);
+            sendSuccess(res, countries);
+        } catch (err) {
+            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
+        }
+    });
+
+    app.post("/city", async function(req, res) {
+        let { countryId } = req.query;
+        let { name, lat, lng } = req.body;
+        let existCountry = await getCountries({ id: countryId });
+
+        if (ObjectId.isValid(countryId) && existCountry) {
+            try {
+                let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{name, lat, lng}] });
+                if (!validation.length) {
+                    let update = {
+                        $push: { 
+                            cities: {
+                                _id: new ObjectId(),
+                                name,
+                                lat: lat || null,
+                                lng: lng || null
+                            }
+                        }
+                    };
+                    let country = await getDB()
+                        .collection(DB_REL.countries)
+                        .updateOne({ '_id': ObjectId(countryId) }, update);
+                    sendSuccess(res, country);
+                } else {
+                    sendInvalidError(res, validation);
+                }
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.createDoc(DB_REL.countries, "cities", countryId));
+            }
+        } else {
+            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
+        }
+    });
+
+    app.put("/city", async function(req, res) {
+        let { countryId, cityId } = req.query;
+        let { name, lat, lng } = req.body;
+        let existCountry = await getCountries({ id: countryId, city: cityId});
+
+        if (ObjectId.isValid(countryId) && ObjectId.isValid(cityId) && existCountry) {
+            try {
+                let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{ name, lat, lng }] });
+                if (!validation.length) {
+                    let update = { $set: {} };
+                    if (name) {
+                        update.$set["cities.$.name"] = name;
+                    }
+                    if (lat) {
+                        update.$set["cities.$.lat"] = lat;
+                    }
+                    if (lng) {
+                        update.$set["cities.$.lng"]= lng;
+                    }
+                    let country = await getDB()
+                        .collection(DB_REL.countries)
+                        .updateOne({ '_id': ObjectId(countryId), 'cities._id': ObjectId(cityId) }, update);
+                    sendSuccess(res, country);
+                } else {
+                    sendInvalidError(res, validation);
+                }
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.countries, cityId, countryId));
+            }
+        } else {
+            sendInvalidError(res, [
+                {field: "_id", value: countryId, error: ERROR_TEMPLATE.id},
+                {field: "cities._id", value: cityId, error: ERROR_TEMPLATE.id},
+            ]);
+        }
+    });    
+
+    app.delete("/city", async function(req, res) {
+        let { cityId } = req.query;
+
+        if (ObjectId.isValid(cityId)) {
+            try {
+                let doc = await getDB().collection(DB_REL.countries).updateOne({ 
+                        "cities._id": ObjectId(cityId)
+                    }, {
+                        $pull: {'cities': {'_id': ObjectId(cityId) }}
+                });
                 sendSuccess(res, doc);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{field: "cities._id", value: cityId, error: ERROR_TEMPLATE.id}]);
         }
     });
 
