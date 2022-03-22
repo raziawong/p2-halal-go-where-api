@@ -62,7 +62,6 @@ async function main() {
         if (showCity) {
             projection.projection.cities = 1;
         }
-
         if (id) {
             criteria._id = ObjectId(id);
         }
@@ -79,32 +78,44 @@ async function main() {
             };
         }
         if (city) {
-            let matchCrit = {
-                $elemMatch: {
-                    name: {
-                        $regex: city,
-                        $options: "i",
+            let elMatch = {};
+
+            if (ObjectId.isValid(city)) {
+                elMatch = {
+                    $elemMatch: {
+                        "_id": { $eq: ObjectId(city) }
+                    }
+                } 
+            } else {
+                elMatch = {
+                    $elemMatch: {
+                        name: {
+                            $regex: city,
+                            $options: "i"
+                        }
                     }
                 }
-            };
-            criteria.cities = { matchCrit };
+            }
+
+            criteria.cities = elMatch;
 
             if (showCity) {
-                projection.projection.cities = { matchCrit };
+                projection.projection.cities = elMatch;
             }
         }
 
         let countries = await getDB()
             .collection(DB_REL.countries)
             .find(criteria, projection).toArray();
+
         return countries;
     }
 
-    async function validateCountries({ id, code, name, cities }, isNew = true) {
+    async function validateCountry({ id, code, name, cities }, isNew = true) {
         let validation = [];
 
         if (isNew) {
-            let countries = await getCountries({ code });
+            let countriesQ = await getCountries({ code });
             if (!code) {
                 validation.push({ field: "code", error: "Country Code is required" });
             } else if (code.length > 2) {
@@ -113,10 +124,11 @@ async function main() {
                     value: code,
                     error: "Country Code must use ISO 3166-1 alpha-2",
                 });
-            } else if (countries.length) {
+            } else if (countriesQ) {
                 validation.push({
                     field: "code",
-                    error: "Country Code already exists, please do update instead",
+                    value: code,
+                    error: "Country Code must be unique and it already exists, please do update on "+ countries[0]._id +" in Countries collection instead",
                 });
             }
             if (!cities) {
@@ -124,25 +136,26 @@ async function main() {
                     field: "cities",
                     error: "Country needs to have at least one city",
                 });
-            } 
+            }
         } else {
-            let countries = await getCountries({ id });
             if (!id) {
                 validation.push({
                     field: "_id",
                     value: id,
                     error: "Category ID is required for update",
                 });
-            } else if (!countries.length) {
-                validation.push({
-                    field: "_id",
-                    value: id,
-                    error: "Country does not exists, please do create instead",
-                });
+            } else {
+                let countriesQ = await getCountries({ id });
+                if (!countriesQ) {
+                    validation.push({
+                        field: "_id",
+                        value: id,
+                        error: "Country does not exists, please add to Countries collection instead",
+                    });
+                }
             }
         }
-
-        if (name && !REGEX.display_name.test(name)) {
+        if (name && !REGEX.displayName.test(name)) {
             validation.push({
                 field: "name",
                 value: name,
@@ -150,33 +163,36 @@ async function main() {
             });
         }
 
+        validation = [...validation, ...await validateCities({ countryCode: code, cities })];
+        return validation;
+    }
+
+    async function validateCities({ countryCode, cities }) {
+        let validation = [];
+
         if (cities) {
-            cities.map((c) => {
-                if (!REGEX.display_name.test(c.name)) {
+            cities.map(async (c) => {
+                if (!REGEX.displayName.test(c.name)) {
                     validation.push({
                         field: "cities.name",
                         value: c.name,
                         error: "City Name cannot contain special characters",
                     });
                 }
-                return c;
-            });
-        }
-
-        if (code && cities) {
-            cities.map(async (c) => {
-                let country = await getCountries({ code, city: c.name });
-                if (country) {
-                    validation.push({
-                        field: "cities.name",
-                        value: c.name,
-                        error: "City Name already exists in Country " + code,
-                    });
+                if (countryCode) {
+                    let countryQ = await getCountries({ countryCode, city: c.name });
+                    if (countryQ) {
+                        validation.push({
+                            field: "cities.name",
+                            value: c.name,
+                            error: "City Name already exists in Country " + countryCode,
+                        });
+                    }
                 }
                 return c;
             });
         }
-        
+
         return validation;
     }
 
@@ -209,112 +225,328 @@ async function main() {
             };
         }
         if (subcat) {
-            criteria.subcats = {
-                $elemMatch: {
-                    $or: [{
-                            name: {
-                                $regex: subcat,
-                                $options: "i",
-                            }
-                        },
-                        {
-                            value: {
-                                $regex: subcat,
-                                $options: "i",
-                            }
-                    }]
-                }
-            };
+            let elMatch = {};
+            if (ObjectId.isValid(subcat)) {
+                elMatch = {
+                    $elemMatch: {
+                        "_id": { $eq: ObjectId(subcat) }
+                    }
+                } 
+            } else {
+                elMatch = {
+                    $elemMatch: {
+                        $or: [{
+                                name: {
+                                    $regex: subcat,
+                                    $options: "i",
+                                }
+                            },
+                            {
+                                value: {
+                                    $regex: subcat,
+                                    $options: "i",
+                                }
+                        }]
+                    }
+                };
+            }
+            criteria.subcats = elMatch;
+            if (showSub) {
+                projection.projection.subcats = elMatch;
+            }
         }
 
         let categories = await getDB()
             .collection(DB_REL.categories)
             .find(criteria, projection).toArray();
+
         return categories;
     }
 
-    async function validateCategories({ id, value, name, subcats }, isNew = true) {
+    async function validateCategory({ id, value, name, subcats }, isNew = true) {
         let validation = [];
 
         if (isNew) {
-            let categories = await getCategories({ value });
             if (!value) {
                 validation.push({ field: "value", error: "Category Value is required" });
-            } else if (categories.length) {
-                validation.push({
-                    field: "value",
-                    error: "Category Value already exists, please do update instead",
-                });
+            } else {
+                let categoriesQ = await getCategories({ value });
+                if (categoriesQ) {
+                    validation.push({
+                        field: "value",
+                        error: "Category Value already exists, please do update instead",
+                    });
+                }
             }
-
             if (!name) {
                 validation.push({ field: "name", error: "Category Name is required" });
             } 
         } else {
-            let categories = await getCategories({ id });
             if (!id) {
                 validation.push({
                     field: "_id",
                     value: id,
                     error: "Category ID is required for update",
                 });
-            } else if (!categories.length) {
-                validation.push({
-                    field: "_id",
-                    value: id,
-                    error: "Category does not exists, please do create instead",
-                });
+            } else {
+                let categoriesQ = await getCategories({ id });
+                if (!categoriesQ) {
+                    validation.push({
+                        field: "_id",
+                        value: id,
+                        error: "Category does not exists, please do create instead",
+                    });
+                }
             }
         }
-
-        if (value && !REGEX.option_value.test(value)) {
+        if (value && !REGEX.optionValue.test(value)) {
             validation.push({
                 field: "value",
                 error: "Category Value cannot contain special characters and/or spaces",
             });
         }
-        if (name && !REGEX.display_name.test(name)) {
+        if (name && !REGEX.displayName.test(name)) {
             validation.push({
                 field: "name",
                 value: name,
                 error: "Category Name cannot contain special characters",
             });
         }
+        
+        validation = [...validation, ...await validateSubCategories({ categoryValue: value, subcats})];
+        return validation;        
+    }
+
+    async function validateSubCategories({ categoryValue, subcats}) {
+        let validation = [];
+
         if (subcats) {
-            subcats.map(t => {
-                if (!REGEX.option_value.test(t.value)) {
+            subcats.map(async (t) => {
+                if (!REGEX.optionValue.test(t.value)) {
                     validation.push({
                         field: "subcats.value",
                         value: t.value,
                         error: "Sub-categories Value cannot contain special characters and/or spaces",
                     });
                 }
-                if (!REGEX.display_name.test(t.name)) {
+                if (!REGEX.displayName.test(t.name)) {
                     validation.push({
                         field: "subcats.name",
                         value: t.name,
                         error: "Sub-categories Name cannot contain special characters",
                     });
                 }
-                return t;
-            });
-        }
-
-        if (value && subcats) {
-            subcats.map(async (t) => {
-                let category = await getCategories({ value, subcat: t.value });
-                if (category) {
-                    validation.push({
-                        field: "subcats.value",
-                        value: t.value,
-                        error: "Sub-categories Value already exists in Category " + value,
-                    });
+                if (categoryValue) {
+                    let categoryQ = await getCategories({ categoryValue, subcat: t.value });
+                    if (categoryQ) {
+                        validation.push({
+                            field: "subcats.value",
+                            value: t.value,
+                            error: "Sub-categories Value already exists in Category " + categoryValue,
+                        });
+                    }
                 }
                 return t;
             });
         }
-        
-        return validation;        
+
+        return validation;
+    }
+
+    async function createArticlesIndex() {
+       await getDB().collection(DB_REL.articles)
+        .createIndex(
+            { title: "text", description: "text", "details.content": "text"},
+            { name: "ArticlesSearchIndex"}
+        );
+    }
+
+    async function getArticles({ text, countryId, cityId, catIds, subcatIds }) {
+        let criteria = {};
+        let projection = {
+            projection: {
+                title: 1,
+                description: 1,
+                photos: 1,
+                tags: 1,
+                location: 1,
+                categories: 1,
+                createdDate: 1,
+                lastModified: 1
+            }
+        };
+
+        if (text) {
+            criteria.$text = { $search : text };
+        }
+        if (countryId) {
+            criteria.location.countryId = countryId;
+        }
+        if (cityId) {
+            criteria.location.cityId = cityId;
+        }
+        if (catIds) {
+            catIds = catIds.split(',');
+            criteria.categories = {
+                $elemMatch: {
+                    catId: {$in: catIds}
+                }
+            }
+        }
+        if (subcatIds) {
+            subcatIds = subcatIds.split(',');
+            criteria.categories = {
+                $elemMatch: {
+                    subcatIds: {$in: subcatIds}
+                }
+            }
+        }
+
+        let articles = await getDB()
+            .collection(DB_REL.articles)
+            .find(criteria, projection).toArray();
+
+        return articles;
+    }
+
+    async function getArticleContributor(id, email) {
+        let criteria = {};
+        let projection = {
+            projection: {
+                title: 1,
+                createdDate: 1,
+                lastModified: 1
+            }
+        };
+
+        if (id) {
+            criteria._id = id;
+        }
+        if (email) {
+            criteria.contributors.email = email;
+        }
+
+        let article = await getDB()
+            .collection(DB_REL.articles)
+            .findOne(criteria, projection).toArray();
+
+        return article;
+    }
+
+    async function validateArticle({ id, title, description, details, photos, tags, contributor, location, categories }, isNew = true) {
+        let validation = [];
+
+        if (!title) {
+            validation.push({ field: "title", error: "Article Title is required" });
+        } else {
+            if (title.length > 50) {
+                validation.push({ field: "title", value: title, error: "Article Title cannot exceed 50 characters including spaces" });
+            }
+            if (!REGEX.displayName.test(title)) {
+                validation.push({ field: "title", value: title, error: "Article Title cannot contain special characters" });
+            }
+        }
+        if (!description) {
+            validation.push({ field: "description", error: "Article Description is required" });
+        } else if (description.length > 150) {
+            validation.push({ field: "description", value: description, error: "Article Description cannot exceed 150 characters including spaces" });
+        }
+        if (photos) {
+            photos.map(p => {
+                if (!REGEX.url.test(p)) {
+                    validation.push({ field: "photos.$", value: p, error: "Article Photo URL is not a valid URL" });
+                }
+            });
+        }
+        if (tags) {
+            tags.map(t => {
+                if (!REGEX.displayName.test(t)) {
+                    validation.push({ field: "tags.$", value: t, error: "Article Tag cannot contain special characters" });
+                }
+            });
+        }
+        if (!contributor) {
+            validation.push({ field: "contributor", error: "Article Contributor object is required" });
+        } else {
+            let cName = contributor.name;
+            let cEmail = contributor.email;
+            if (!cName) {
+                validation.push({ field: "contributor.name", error: "Article Contributor Name is required" });
+            } else if (!REGEX.displayName.test(cName)){
+                validation.push({ field: "contributor.name", value: cName, error: "Article Contributor Name cannot contain special characters" });
+            }
+            if (!cEmail) {
+                validation.push({ field: "contributor.email", error: "Article Contributor Email is required" });
+            } else if (!REGEX.email.test(cEmail)) {
+                validation.push({ field: "contributor.email", value: cEmail, error: "Article Contributor Email is not a valid email address" });
+            }
+        }       
+        if (!location) {
+            validation.push({ field: "location", error: "Article Location object is required" });
+        } else {
+            let countryId = location.countryId;
+            let cityId = location.cityId;
+            let address = location.address;
+            if (!countryId) {
+                validation.push({ field: "location.countryId", error: "Article Location Country ID is required" });
+            } else {
+                let countryQ = await getCountries({id: countryId});
+                if (!countryQ) {
+                    validation.push({ field: "location.countryId", value: countryId, error: "Article Location Country ID is not valid" });
+                } else {
+                    if (!cityId) {
+                        validation.push({ field: "location.cityId", error: "Article Location City ID is required" });
+                    } else {
+                        let cityQ = await getCountries({id: countryId, city: cityId});
+                        if (!cityQ) {
+                            validation.push({ field: "location.cityId", value: cityId, error: "Article Location City ID is not valid" });
+                        }
+                    }
+                }
+            }
+            if (!address) {
+                validation.push({ field: "location.address", error: "Article Location Address is required" });
+            }
+        }
+        if (!categories) {
+            validation.push({ field: "categories", error: "Article Categories object is required" });
+        } else {
+            categories.map(async (c) => {
+                let catId = c.catId;
+                if (!catId) {
+                    validation.push({ field: "categories.catId", error: "Article Category ID is required" });
+                } else {
+                    let categoryQ = await getCountries({id: catId});
+                    if (ObjectId.isValid(catId) || !categoryQ) {
+                        validation.push({ field: "categories.catId", value: catId, error: "Article Category ID is not valid" });
+                    } else {
+                        c["subcatIds"].map(async (subcat) => {
+                            let subCatQ = await getCountries({id: catId, subcat});
+                            if (ObjectId.isValid(s) || !subCatQ) {
+                                validation.push({ field: "location.subcatIds", value: subcat, error: "Article Sub-category ID is not valid" });
+                            }
+                        });
+                    }
+                }
+            })
+        }
+        if (details) {
+            details.map(d => {
+                if (!d["section_name"]) {
+                    validation.push({ field: "details.section_name", error: "Each Article Section requires a heading name" });
+                } else {
+                    if (!REGEX.displayName.test(d["section_name"])) {
+                        validation.push({ field: "details.section_name", value: d["section_name"], error: "Article Section Name cannot contain special characters" });
+                    }
+                    if (!d.content) {
+                        validation.push({ field: "details.content", error: "Each Article Section requires a content" });
+                    }
+                }
+                return d;
+            })
+        }
+
+        return validation;      
     }
 
     async function deleteDocument(_id, collection) {
@@ -335,9 +567,21 @@ async function main() {
         }
     });
 
-    app.post("/countries", async function (req, res) {
+    app.get("/countries/cities", async function (req, res) {
         try {
-            let validation = await validateCountries(req.body, true);
+            let countries = await getCountries(req.query, true);
+            sendSuccess(res, countries);
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while reading countries collection."
+            );
+        }
+    });
+
+    app.post("/country", async function (req, res) {
+        try {
+            let validation = await validateCountry(req.body, true);
 
             if (!validation.length) {
                 let { code, name, cities } = req.body;
@@ -361,23 +605,20 @@ async function main() {
         }
     });
 
-    app.patch("/countries", async function (req, res) {
+    app.put("/country", async function (req, res) {
         let { id } = req.query;
         try {
-            let validation = await validateCountries({id, ...req.body}, false);
+            let validation = await validateCountry({id, ...req.body}, false);
 
             if (!validation.length) {
-                let { code, name, cities } = req.body;
-                let update = {
-                    $set: {},
-                };
-                if (code) {
-                    update.$set.code = code;
-                }
+                let { name, cities } = req.body;
+                let update = { $set: {} };
                 if (name) {
                     update.$set.name = name;
                 }
                 if (cities) {
+                    let countryQ = await getCountries({id}, true);
+                    cities = [...countryQ.cities, ...cities];
                     cities = cities.map((c) => {
                         if (!c._id) {
                             c._id = new ObjectId();
@@ -397,12 +638,12 @@ async function main() {
         } catch (err) {
             sendServerError(
                 res,
-                "Error encountered while patching"+ id +" in countries collection."
+                "Error encountered while updating"+ id +" in countries collection."
             );
         }
     });
 
-    app.delete("/countries", async function (req, res) {
+    app.delete("/country", async function (req, res) {
         let { id } = req.query;
 
         try {
@@ -417,18 +658,6 @@ async function main() {
         }
     });
 
-    app.get("/countries/cities", async function (req, res) {
-        try {
-            let countries = await getCountries(req.query, true);
-            sendSuccess(res, countries);
-        } catch (err) {
-            sendServerError(
-                res,
-                "Error encountered while reading countries collection."
-            );
-        }
-    });    
-
     app.get("/categories", async function (req, res) {
         try {
             let categories = await getCategories(req.query);
@@ -441,9 +670,21 @@ async function main() {
         }
     });
 
-    app.post("/categories", async function (req, res) {
+    app.get("/categories/subcats", async function (req, res) {
         try {
-            let validation = await validateCategories(req.body, true);
+            let categories = await getCategories(req.query, true);
+            sendSuccess(res, categories);
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while reading categories collection."
+            );
+        }
+    });
+
+    app.post("/category", async function (req, res) {
+        try {
+            let validation = await validateCategory(req.body, true);
 
             if (!validation.length) {
                 let { value, name, subcats } = req.body;
@@ -462,23 +703,26 @@ async function main() {
         }
     });
 
-    app.patch("/categories", async function (req, res) {
+    app.put("/category", async function (req, res) {
         let { id } = req.query;
         try {
-            let validation = await validateCategories({id, ...req.body}, false);
+            let validation = await validateCategory({id, ...req.body}, false);
 
             if (!validation.length) {
-                let { value, name, subcats } = req.body;
-                let update = {
-                    $set: {},
-                };
-                if (value) {
-                    update.$set.value = value;
-                }
+                let { name, subcats } = req.body;
+                let update = { $set: {} };
                 if (name) {
                     update.$set.name = name;
                 }
                 if (subcats) {
+                    let categoryQ = await getCategories({id}, true);
+                    subcats = [...categoryQ.subcats, ...subcats];
+                    subcats = subcats.map(s => {
+                        if (!s._id) {
+                            s._id = new ObjectId();
+                        }
+                        return s;
+                    });
                     update.$set.subcats = subcats;
                 }
                 let categories = await getDB()
@@ -491,12 +735,12 @@ async function main() {
         } catch (err) {
             sendServerError(
                 res,
-                "Error encountered while patching "+ id +" in categories collection."
+                "Error encountered while updating "+ id +" in categories collection."
             );
         }
     });
 
-    app.delete("/categories", async function (req, res) {
+    app.delete("/category", async function (req, res) {
         let { id } = req.query;
 
         try {
@@ -510,21 +754,22 @@ async function main() {
         }
     });
 
-    app.get("/categories/sub", async function (req, res) {
+    app.get("/articles", async function (req, res) {
         try {
-            let categories = await getCategories(req.query, true);
-            sendSuccess(res, categories);
+            let articles = await getArticles(req.query);
+            sendSuccess(res, articles);
         } catch (err) {
             sendServerError(
                 res,
-                "Error encountered while reading categories collection."
+                "Error encountered while reading articles collection."
             );
         }
-    });    
+    });
+
 }
 
 main();
 
-app.listen(port_num, function() {
+app.listen(portNum, function() {
     console.log("Server has started");
 });
