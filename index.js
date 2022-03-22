@@ -28,10 +28,10 @@ const REGEX = {
 const ERROR_TEMPLATE = {
     id: "Id is not a valid ObjectId",
     create: collection => `Error encountered while adding data to ${collection} collection`,
+    createDoc: (collection, document, id) => `Error encountered while adding ${document} data using parent Id ${id} to ${collection} collection`,
     read: collection => `Error encountered while retrieving data from ${collection} collection`,
     readDoc: (collection, document, id) => `Error encountered while retrieving ${document} data using ${id} from ${collection} collection`,
     update: (collection, id) => `Error encountered while updating ${id} in ${collection} collection`,
-    updateDoc: (collection, document, id) => `Error encountered while adding ${document} data using ${id} to ${collection} collection`,
     delete: (collection, id) => `Error encountered while deleting ${id} from ${collection} collection`,
     required: field => `${field} is required`,
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
@@ -46,7 +46,7 @@ const ERROR_TEMPLATE = {
 
 async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
-    await createArticlesIndex();
+    // await createArticlesIndex();
 
     function sendSuccess(res, data) {
         res.status(200);
@@ -76,7 +76,7 @@ async function main() {
 
     async function getCountries({ id, code, name, city }, showCity = false) {
         let criteria = {};
-        let projection = {
+        let projectOpt = {
             projection: {
                 code: 1,
                 name: 1,
@@ -84,7 +84,7 @@ async function main() {
         };
 
         if (showCity) {
-            projection.projection.cities = 1;
+            projectOpt.projection.cities = 1;
         }
         if (id) {
             criteria._id = ObjectId(id);
@@ -124,20 +124,20 @@ async function main() {
             criteria.cities = elMatch;
 
             if (showCity) {
-                projection.projection.cities = elMatch;
+                projectOpt.projection.cities = elMatch;
             }
         }
 
         let countries = await getDB()
             .collection(DB_REL.countries)
-            .find(criteria, projection).toArray();
+            .find(criteria, projectOpt).toArray();
 
         return countries;
     }
 
     async function getCategories({ id, value, name, subcat }, showSub = false) {
         let criteria = {};
-        let projection = {
+        let projectOpt = {
             projection: {
                 value: 1,
                 name: 1,
@@ -145,7 +145,7 @@ async function main() {
         };
 
         if (showSub) {
-            projection.projection.subcats = 1;
+            projectOpt.projection.subcats = 1;
         }
         if (id) {
             criteria._id = ObjectId(id);
@@ -194,20 +194,20 @@ async function main() {
             criteria.subcats = elMatch;
 
             if (showSub) {
-                projection.projection.subcats = elMatch;
+                projectOpt.projection.subcats = elMatch;
             }
         }
 
         let categories = await getDB()
             .collection(DB_REL.categories)
-            .find(criteria, projection).toArray();
+            .find(criteria, projectOpt).toArray();
 
         return categories;
     }
 
-    async function getArticles({ text, countryId, cityId, catIds, subcatIds }) {
+    async function getArticles({ id, text, countryId, cityId, catIds, subcatIds }) {
         let criteria = {};
-        let projection = {
+        let projectOpt = {
             projection: {
                 title: 1,
                 description: 1,
@@ -220,6 +220,9 @@ async function main() {
             }
         };
 
+        if (id) {
+            criteria._id = ObjectId(id);
+        }
         if (text) {
             criteria.$text = { $search: text };
         }
@@ -248,14 +251,14 @@ async function main() {
 
         let articles = await getDB()
             .collection(DB_REL.articles)
-            .find(criteria, projection).toArray();
+            .find(criteria, projectOpt).toArray();
 
         return articles;
     }
 
-    async function getArticleContributors(id, email) {
+    async function getArticleContributors(articleId, email) {
         let criteria = {};
-        let projection = {
+        let projectOpt = {
             projection: {
                 title: 1,
                 "contributors.displayName": 1,
@@ -264,8 +267,8 @@ async function main() {
             }
         };
 
-        if (id) {
-            criteria._id = ObjectId(id);
+        if (articleId) {
+            criteria._id = ObjectId(articleId);
         }
         if (email) {
             criteria.contributors = {
@@ -275,7 +278,7 @@ async function main() {
 
         let article = await getDB()
             .collection(DB_REL.articles)
-            .find(criteria, projection).toArray();
+            .find(criteria, projectOpt).toArray();
 
         return article;
     }
@@ -364,6 +367,20 @@ async function main() {
                             error: ERROR_TEMPLATE.exists("City Name", countryQ._id, DB_REL.countries)
                         });
                     }
+                }
+                if (c.lat && !(c.lat >= -90 && c.lat <= 90)) {
+                    validation.push({
+                        field: "cities.lat",
+                        value: c.lat,
+                        error: "City Latitude must be between -90 and 90."
+                    });
+                }
+                if (c.lat && !(c.lng >= -180 && c.lng <= 180)) {
+                    validation.push({
+                        field: "cities.lng",
+                        value: c.lng,
+                        error: "City Longitude must be between -180 and 180."
+                    });
                 }
                 return c;
             });
