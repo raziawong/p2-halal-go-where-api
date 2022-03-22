@@ -208,7 +208,6 @@ async function main() {
         if (showSub) {
             projection.projection.subcats = 1;
         }
-
         if (id) {
             criteria._id = ObjectId(id);
         }
@@ -226,6 +225,7 @@ async function main() {
         }
         if (subcat) {
             let elMatch = {};
+
             if (ObjectId.isValid(subcat)) {
                 elMatch = {
                     $elemMatch: {
@@ -250,7 +250,9 @@ async function main() {
                     }
                 };
             }
+
             criteria.subcats = elMatch;
+
             if (showSub) {
                 projection.projection.subcats = elMatch;
             }
@@ -380,10 +382,10 @@ async function main() {
             criteria.$text = { $search : text };
         }
         if (countryId) {
-            criteria.location.countryId = countryId;
+            criteria.location = { countryId };
         }
         if (cityId) {
-            criteria.location.cityId = cityId;
+            criteria.location = { cityId };
         }
         if (catIds) {
             catIds = catIds.split(',');
@@ -409,26 +411,29 @@ async function main() {
         return articles;
     }
 
-    async function getArticleContributor(id, email) {
+    async function getArticleContributors(id, email) {
         let criteria = {};
         let projection = {
             projection: {
                 title: 1,
+                "contributors.displayName": 1,
                 createdDate: 1,
                 lastModified: 1
             }
         };
 
         if (id) {
-            criteria._id = id;
+            criteria._id = ObjectId(id);
         }
         if (email) {
-            criteria.contributors.email = email;
+            criteria.contributors = {
+                $elemMatch: { email }
+            }
         }
 
         let article = await getDB()
             .collection(DB_REL.articles)
-            .findOne(criteria, projection).toArray();
+            .find(criteria, projection).toArray();
 
         return article;
     }
@@ -766,6 +771,19 @@ async function main() {
         }
     });
 
+    app.get("/article/contributors", async function (req, res) {
+        let { email, id } = req.query;
+
+        try {
+            let article = await getArticleContributors(id, email);
+            sendSuccess(res, article);
+        } catch (err) {
+            sendServerError(
+                res,
+                "Error encountered while getting contributors in article " + id
+            );
+        }
+    });
 }
 
 main();
