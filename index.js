@@ -26,6 +26,13 @@ const REGEX = {
 };
 
 const ERROR_TEMPLATE = {
+    id: "Id is not a valid ObjectId",
+    create: collection => `Error encountered while adding data to ${collection} collection`,
+    read: collection => `Error encountered while retrieving data from ${collection} collection`,
+    readDoc: (collection, document, id) => `Error encountered while retrieving ${document} data using ${id} from ${collection} collection`,
+    update: (collection, id) => `Error encountered while updating ${id} in ${collection} collection`,
+    updateDoc: (collection, document, id) => `Error encountered while adding ${document} data using ${id} to ${collection} collection`,
+    delete: (collection, id) => `Error encountered while deleting ${id} from ${collection} collection`,
     required: field => `${field} is required`,
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
     special: field => `${field} cannot contain special characters`,
@@ -669,7 +676,7 @@ async function main() {
             let countries = await getCountries(req.query);
             sendSuccess(res, countries);
         } catch (err) {
-            sendServerError(res, "Error encountered while reading countries collection.");
+            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
         }
     });
 
@@ -678,7 +685,7 @@ async function main() {
             let countries = await getCountries(req.query, true);
             sendSuccess(res, countries);
         } catch (err) {
-            sendServerError(res, "Error encountered while reading countries collection.");
+            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
         }
     });
 
@@ -701,7 +708,7 @@ async function main() {
                 sendInvalidError(res, validation);
             }
         } catch (err) {
-            sendServerError(res, "Error encountered while adding to countries collection.");
+            sendServerError(res, ERROR_TEMPLATE.create(DB_REL.countries));
         }
     });
 
@@ -738,10 +745,10 @@ async function main() {
                     sendInvalidError(res, validation);
                 }
             } catch (err) {
-                sendServerError(res, "Error encountered while updating" + id + " in countries collection.");
+                sendServerError(res, ERROR_TEMPLATE.update(DB_REL.countries, id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
@@ -751,13 +758,12 @@ async function main() {
         if (ObjectId.isValid(id)) {
             try {
                 let doc = await deleteDocument(id, DB_REL.countries);
-                console.log(id);
                 sendSuccess(res, doc);
             } catch (err) {
-                sendServerError(res, "Error encountered while deleting " + id + " in countries collection.");
+                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
@@ -766,7 +772,7 @@ async function main() {
             let categories = await getCategories(req.query);
             sendSuccess(res, categories);
         } catch (err) {
-            sendServerError(res, "Error encountered while reading categories collection.");
+            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.categories));
         }
     });
 
@@ -775,7 +781,7 @@ async function main() {
             let categories = await getCategories(req.query, true);
             sendSuccess(res, categories);
         } catch (err) {
-            sendServerError(res, "Error encountered while reading categories collection.");
+            sendServerError(res, ERROR_TEMPLATE.update(DB_REL.categories));
         }
     });
 
@@ -793,7 +799,7 @@ async function main() {
                 sendInvalidError(res, validation);
             }
         } catch (err) {
-            sendServerError(res, "Error encountered while adding to categories collection.");
+            sendServerError(res, ERROR_TEMPLATE.create(DB_REL.categories));
         }
     });
 
@@ -829,10 +835,10 @@ async function main() {
                     sendInvalidError(res, validation);
                 }
             } catch (err) {
-                sendServerError(res, "Error encountered while updating " + id + " in categories collection.");
+                sendServerError(res, ERROR_TEMPLATE.update(DB_REL.categories, id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
@@ -844,10 +850,10 @@ async function main() {
                 let doc = await deleteDocument(id, DB_REL.categories);
                 sendSuccess(res, doc);
             } catch (err) {
-                sendServerError(res, "Error encountered while deleting " + id + " in categories collection.");
+                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.categories, id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
@@ -856,7 +862,7 @@ async function main() {
             let articles = await getArticles(req.query);
             sendSuccess(res, articles);
         } catch (err) {
-            sendServerError(res, "Error encountered while reading articles collection.");
+            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.read));
         }
     });
 
@@ -896,7 +902,7 @@ async function main() {
                 sendInvalidError(res, validation);
             }
         } catch (err) {
-            sendServerError(res, "Error encountered while adding to articles collection.");
+            sendServerError(res, ERROR_TEMPLATE.create(DB_REL.articles));
         }
     });
 
@@ -907,7 +913,7 @@ async function main() {
             let doc = await deleteDocument(id, DB_REL.articles);
             sendSuccess(res, doc);
         } catch (err) {
-            sendServerError(res, "Error encountered while deleting " + id + " in articles collection.");
+            sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.articles, id));
         }
     });
 
@@ -919,10 +925,10 @@ async function main() {
                 let article = await getArticleContributors(id, email);
                 sendSuccess(res, article);
             } catch (err) {
-                sendServerError(res, "Error encountered while getting contributors in article " + id);
+                sendServerError(res, ERROR_TEMPLATE.readDoc(DB_REL.articles, "contributor", id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
@@ -965,10 +971,10 @@ async function main() {
                     sendInvalidError(res, validation);
                 }
             } catch (err) {
-                sendServerError(res,"Error encountered while adding to articles collection.");
+                sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.articles, "rating", id));
             }
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: "ID is not a valid ObjectId"}]);
+            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 }
