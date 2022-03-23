@@ -47,7 +47,7 @@ const ERROR_TEMPLATE = {
 
 async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
-    // await createArticlesIndex();
+    await createArticlesIndex();
 
     function sendSuccess(res, data) {
         res.status(200);
@@ -75,7 +75,7 @@ async function main() {
             .createIndex({ title: "text", description: "text", "details.content": "text" }, { name: "ArticlesSearchIndex" });
     }
 
-    async function getCountries({ id, code, name, city }, showCity = false) {
+    async function getCountries({ countryId, code, name, city }, showCity = false) {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -87,8 +87,8 @@ async function main() {
         if (showCity) {
             projectOpt.projection.cities = 1;
         }
-        if (id) {
-            criteria._id = ObjectId(id);
+        if (countryId) {
+            criteria._id = ObjectId(countryId);
         }
         if (code) {
             criteria.code = {
@@ -129,14 +129,13 @@ async function main() {
             }
         }
 
-        let countries = await getDB()
-            .collection(DB_REL.countries)
+        let countries = await getDB().collection(DB_REL.countries)
             .find(criteria, projectOpt).toArray();
 
         return countries;
     }
 
-    async function getCategories({ id, value, name, subcat }, showSub = false) {
+    async function getCategories({ catId, value, name, subcat }, showSub = false) {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -148,8 +147,8 @@ async function main() {
         if (showSub) {
             projectOpt.projection.subcats = 1;
         }
-        if (id) {
-            criteria._id = ObjectId(id);
+        if (catId) {
+            criteria._id = ObjectId(catId);
         }
         if (value) {
             criteria.value = {
@@ -199,14 +198,13 @@ async function main() {
             }
         }
 
-        let categories = await getDB()
-            .collection(DB_REL.categories)
+        let categories = await getDB().collection(DB_REL.categories)
             .find(criteria, projectOpt).toArray();
 
         return categories;
     }
 
-    async function getArticles({ id, text, countryId, cityId, catIds, subcatIds }) {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds }) {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -221,8 +219,8 @@ async function main() {
             }
         };
 
-        if (id) {
-            criteria._id = ObjectId(id);
+        if (articleId) {
+            criteria._id = ObjectId(articleId);
         }
         if (text) {
             criteria.$text = { $search: text };
@@ -234,7 +232,7 @@ async function main() {
             criteria.location = { cityId };
         }
         if (catIds) {
-            catIds = catIds.split(',');
+            catIds = catIds.split(",");
             criteria.categories = {
                 $elemMatch: {
                     catId: { $in: catIds }
@@ -242,7 +240,7 @@ async function main() {
             }
         }
         if (subcatIds) {
-            subcatIds = subcatIds.split(',');
+            subcatIds = subcatIds.split(",");
             criteria.categories = {
                 $elemMatch: {
                     subcatIds: { $in: subcatIds }
@@ -250,8 +248,7 @@ async function main() {
             }
         }
 
-        let articles = await getDB()
-            .collection(DB_REL.articles)
+        let articles = await getDB().collection(DB_REL.articles)
             .find(criteria, projectOpt).toArray();
 
         return articles;
@@ -277,18 +274,17 @@ async function main() {
             }
         }
 
-        let article = await getDB()
-            .collection(DB_REL.articles)
+        let article = await getDB().collection(DB_REL.articles)
             .find(criteria, projectOpt).toArray();
 
         return article;
     }
 
-    async function deleteDocument(_id, collection) {
-        return await getDB().collection(collection).deleteOne({ "_id": ObjectId(_id) });
+    async function deleteDocument(id, collection) {
+        return await getDB().collection(collection).deleteOne({ "_id": ObjectId(id) });
     }
 
-    async function validateCountry({ id, code, name, cities }, isNew = true) {
+    async function validateCountry({ countryId, code, name, cities }, isNew = true) {
         let validation = [];
 
         if (isNew) {
@@ -318,18 +314,18 @@ async function main() {
                 });
             }
         } else {
-            if (!id) {
+            if (!countryId) {
                 validation.push({
                     field: "_id",
-                    value: id,
+                    value: countryId,
                     error: ERROR_TEMPLATE.required("Category Id")
                 });
             } else {
-                let countriesQ = await getCountries({ id });
+                let countriesQ = await getCountries({ id: countryId });
                 if (!countriesQ) {
                     validation.push({
                         field: "_id",
-                        value: id,
+                        value: countryId,
                         error: ERROR_TEMPLATE.notExist("Country", DB_REL.countries)
                     });
                 }
@@ -352,7 +348,12 @@ async function main() {
 
         if (cities) {
             cities.map(async(c) => {
-                if (!REGEX.displayName.test(c.name)) {
+                if (!c.name) {
+                    validation.push({
+                        field: "cities.name",
+                        error: ERROR_TEMPLATE.required("City Name")
+                    });
+                } else if (!REGEX.displayName.test(c.name)) {
                     validation.push({
                         field: "cities.name",
                         value: c.name,
@@ -390,7 +391,7 @@ async function main() {
         return validation;
     }
 
-    async function validateCategory({ id, value, name, subcats }, isNew = true) {
+    async function validateCategory({ catId, value, name, subcats }, isNew = true) {
         let validation = [];
 
         if (isNew) {
@@ -415,18 +416,18 @@ async function main() {
                 });
             }
         } else {
-            if (!id) {
+            if (!catId) {
                 validation.push({
                     field: "_id",
-                    value: id,
+                    value: catId,
                     error: ERROR_TEMPLATE.required("Category Id")
                 });
             } else {
-                let categoriesQ = await getCategories({ id });
+                let categoriesQ = await getCategories({ id: catId });
                 if (!categoriesQ) {
                     validation.push({
                         field: "_id",
-                        value: id,
+                        value: catId,
                         error: ERROR_TEMPLATE.notExist("Category", DB_REL.categories)
                     });
                 }
@@ -455,18 +456,18 @@ async function main() {
 
         if (subcats) {
             subcats.map(async(t) => {
-                if (!REGEX.optionValue.test(t.value)) {
-                    validation.push({
-                        field: "subcats.value",
-                        value: t.value,
-                        error: ERROR_TEMPLATE.specialSpace("Sub-categories Value")
-                    });
-                }
                 if (!REGEX.displayName.test(t.name)) {
                     validation.push({
                         field: "subcats.name",
                         value: t.name,
                         error: ERROR_TEMPLATE.special("Sub-categories Name")
+                    });
+                } 
+                if (!REGEX.optionValue.test(t.value)) {
+                    validation.push({
+                        field: "subcats.value",
+                        value: t.value,
+                        error: ERROR_TEMPLATE.specialSpace("Sub-categories Value")
                     });
                 }
                 if (categoryValue) {
@@ -486,7 +487,7 @@ async function main() {
         return validation;
     }
 
-    async function validateArticle({ id, title, description, details, photos, tags, contributor, location, categories }, isNew = true) {
+    async function validateArticle({ articleId, title, description, details, photos, tags, contributor, location, categories }, isNew = true) {
         let validation = [];
 
         if (!title) {
