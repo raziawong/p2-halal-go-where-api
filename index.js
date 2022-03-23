@@ -691,11 +691,17 @@ async function main() {
     }
 
     app.get("/countries", async function(req, res) {
-        try {
-            let countries = await getCountries(req.query);
-            sendSuccess(res, countries);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
+        let { countryId } = req.body;
+
+        if (countryId && !ObjectId.isValid(countryId)) {
+            sendInvalidError(res, [{ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let countries = await getCountries(req.body);
+                sendSuccess(res, countries);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
+            }
         }
     });
 
@@ -710,8 +716,7 @@ async function main() {
                     c._id = new ObjectId();
                     return c;
                 });
-                let country = await getDB()
-                    .collection(DB_REL.countries)
+                let country = await getDB().collection(DB_REL.countries)
                     .insertOne({ code, name, cities });
                 sendSuccess(res, country);
             } else {
@@ -723,20 +728,23 @@ async function main() {
     });
 
     app.put("/country", async function(req, res) {
-        let { countryId } = req.query;
+        let { countryId } = req.body;
 
-        if (ObjectId.isValid(countryId)) {
+        if (!ObjectId.isValid(countryId)) {
+            sendInvalidError(res, [{field: "countryId", value: countryId, error: ERROR_TEMPLATE.id}]);
+        } else {
             try {
-                let validation = await validateCountry({ id: countryId, ...req.body }, false);
+                let validation = await validateCountry(req.body, false);
 
                 if (!validation.length) {
                     let { name, cities } = req.body;
                     let update = { $set: {} };
+
                     if (name) {
                         update.$set.name = name;
                     }
                     if (cities) {
-                        let countryQ = await getCountries({ id: countryId }, true);
+                        let countryQ = await getCountries({ countryId }, true);
                         cities = [...countryQ.cities, ...cities];
                         cities = cities.map((c) => {
                             if (!c._id) {
@@ -747,9 +755,8 @@ async function main() {
                         update.$set.cities = cities;
                     }
 
-                    let country = await getDB()
-                        .collection(DB_REL.countries)
-                        .updateOne({ '_id': ObjectId(countryId) }, update);
+                    let country = await getDB().collection(DB_REL.countries)
+                        .updateOne({ "_id": ObjectId(countryId) }, update);
                     sendSuccess(res, country);
                 } else {
                     sendInvalidError(res, validation);
@@ -757,140 +764,159 @@ async function main() {
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.update(DB_REL.countries, countryId));
             }
-        } else {
-            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
         }
     });
 
     app.delete("/country", async function(req, res) {
-        let { countryId } = req.query;
+        let { countryId } = req.body;
 
-        if (ObjectId.isValid(countryId)) {
+        if (!ObjectId.isValid(countryId)) {
+            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
+        } else {
             try {
                 let doc = await deleteDocument(countryId, DB_REL.countries);
                 sendSuccess(res, doc);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, countryId));
             }
+        }
+    });
+
+    app.get("/countries/cities", async function(req, res) {
+        let { countryId } = req.body;
+
+        if (countryId && !ObjectId.isValid(countryId)) {
+            sendInvalidError(res, [{ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id }]);
         } else {
-            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
-        }
-    });
-
-    app.get("/cities", async function(req, res) {
-        try {
-            let countries = await getCountries(req.query, true);
-            sendSuccess(res, countries);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
-        }
-    });
-
-    app.post("/city", async function(req, res) {
-        let { countryId } = req.query;
-        let { name, lat, lng } = req.body;
-        let existCountry = await getCountries({ id: countryId });
-
-        if (ObjectId.isValid(countryId) && existCountry) {
             try {
-                let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{name, lat, lng}] });
-                if (!validation.length) {
-                    let update = {
-                        $push: { 
-                            cities: {
-                                _id: new ObjectId(),
-                                name,
-                                lat: lat || null,
-                                lng: lng || null
+                let countries = await getCountries(req.body, true);
+                sendSuccess(res, countries);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
+            }
+        }
+    });
+
+    app.post("/country/city", async function(req, res) {
+        let { countryId, name, lat, lng } = req.body;
+
+        if (!countryId || !ObjectId.isValid(countryId)) {
+            sendInvalidError(res, [{ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            let existCountry = await getCountries({ countryId });
+
+            if (existCountry) {
+                try {
+                    let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{name, lat, lng}] });
+                    if (!validation.length) {
+                        let update = {
+                            $push: { 
+                                cities: {
+                                    _id: new ObjectId(),
+                                    name,
+                                    lat: lat || null,
+                                    lng: lng || null
+                                }
                             }
-                        }
-                    };
-                    let country = await getDB()
-                        .collection(DB_REL.countries)
-                        .updateOne({ '_id': ObjectId(countryId) }, update);
-                    sendSuccess(res, country);
-                } else {
-                    sendInvalidError(res, validation);
+                        };
+                        let country = await getDB().collection(DB_REL.countries)
+                            .updateOne({ "_id": ObjectId(countryId) }, update);
+                        sendSuccess(res, country);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.createDoc(DB_REL.countries, "cities", countryId));
                 }
-            } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.createDoc(DB_REL.countries, "cities", countryId));
             }
-        } else {
-            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
         }
     });
 
-    app.put("/city", async function(req, res) {
-        let { countryId, cityId } = req.query;
-        let { name, lat, lng } = req.body;
-        let existCountry = await getCountries({ id: countryId, city: cityId});
+    app.put("/country/city", async function(req, res) {
+        let { countryId, cityId, name, lat, lng } = req.body;
+        let idValidation = [];
 
-        if (ObjectId.isValid(countryId) && ObjectId.isValid(cityId) && existCountry) {
-            try {
-                let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{ name, lat, lng }] });
-                if (!validation.length) {
-                    let update = { $set: {} };
-                    if (name) {
-                        update.$set["cities.$.name"] = name;
-                    }
-                    if (lat) {
-                        update.$set["cities.$.lat"] = lat;
-                    }
-                    if (lng) {
-                        update.$set["cities.$.lng"]= lng;
-                    }
-                    let country = await getDB()
-                        .collection(DB_REL.countries)
-                        .updateOne({ '_id': ObjectId(countryId), 'cities._id': ObjectId(cityId) }, update);
-                    sendSuccess(res, country);
-                } else {
-                    sendInvalidError(res, validation);
-                }
-            } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.countries, cityId, countryId));
-            }
+        if (!countryId || !ObjectId.isValid(countryId)) {
+            idValidation.push({ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id });
+        } 
+        if (!cityId || !ObjectId.isValid(cityId)) {
+            idValidation.push({ field: "cityId", value: cityId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (idValidation) {
+            sendInvalidError(res, idValidation);
         } else {
-            sendInvalidError(res, [
-                {field: "_id", value: countryId, error: ERROR_TEMPLATE.id},
-                {field: "cities._id", value: cityId, error: ERROR_TEMPLATE.id},
-            ]);
+            let existCountry = await getCountries({ countryId, city: cityId});
+
+            if (existCountry) {
+                try {
+                    let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{ name, lat, lng }] });
+                    if (!validation.length) {
+                        let update = { $set: {} };
+                        if (name) {
+                            update.$set["cities.$.name"] = name;
+                        }
+                        if (lat) {
+                            update.$set["cities.$.lat"] = lat;
+                        }
+                        if (lng) {
+                            update.$set["cities.$.lng"]= lng;
+                        }
+                        let country = await getDB().collection(DB_REL.countries)
+                            .updateOne(
+                                { "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
+                                update
+                            );
+                        sendSuccess(res, country);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.countries, cityId, countryId));
+                }
+            }
         }
     });    
 
-    app.delete("/city", async function(req, res) {
-        let { cityId } = req.query;
+    app.delete("/country/city", async function(req, res) {
+        let { countryId, cityId } = req.body;
+        let idValidation = [];
 
-        if (ObjectId.isValid(cityId)) {
+        if (!countryId || !ObjectId.isValid(countryId)) {
+            idValidation.push({ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id });
+        } 
+        if (!cityId || !ObjectId.isValid(cityId)) {
+            idValidation.push({ field: "cityId", value: cityId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (idValidation) {
+            sendInvalidError(res, idValidation);
+        } else {
             try {
-                let doc = await getDB().collection(DB_REL.countries).updateOne({ 
-                        "cities._id": ObjectId(cityId)
-                    }, {
-                        $pull: {'cities': {'_id': ObjectId(cityId) }}
-                });
+                let doc = await getDB().collection(DB_REL.countries)
+                    .updateOne(
+                        { "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
+                        { $pull: { cities: {"_id": ObjectId(cityId) }} }
+                    );
                 sendSuccess(res, doc);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, id));
             }
-        } else {
-            sendInvalidError(res, [{field: "cities._id", value: cityId, error: ERROR_TEMPLATE.id}]);
         }
     });
 
     app.get("/categories", async function(req, res) {
-        try {
-            let categories = await getCategories(req.query);
-            sendSuccess(res, categories);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.categories));
-        }
-    });
+        let { catId } = req.body;
 
-    app.get("/categories/subcats", async function(req, res) {
-        try {
-            let categories = await getCategories(req.query, true);
-            sendSuccess(res, categories);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.update(DB_REL.categories));
+        if (catId && !ObjectId.isValid(catId)) {
+            sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let categories = await getCategories(req.body);
+                sendSuccess(res, categories);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.read(DB_REL.categories));
+            }
         }
     });
 
@@ -938,7 +964,7 @@ async function main() {
                     }
                     let category = await getDB()
                         .collection(DB_REL.categories)
-                        .updateOne({ '_id': ObjectId(id) }, update);
+                        .updateOne({ "_id": ObjectId(id) }, update);
                     sendSuccess(res, category);
                 } else {
                     sendInvalidError(res, validation);
