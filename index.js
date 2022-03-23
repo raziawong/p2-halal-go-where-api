@@ -28,12 +28,13 @@ const REGEX = {
 const ERROR_TEMPLATE = {
     id: "Id is not a valid ObjectId",
     create: collection => `Error encountered while adding data to ${collection} collection`,
-    createDoc: (collection, document, id) => `Error encountered while adding ${document} data using parent (${id}) to ${collection} collection`,
+    createEmbed: (collection, document, id) => `Error encountered while adding ${document} data using parent (${id}) to ${collection} collection`,
     read: collection => `Error encountered while retrieving data from ${collection} collection`,
-    readDoc: (collection, document, id) => `Error encountered while retrieving ${document} data using ${id} from ${collection} collection`,
+    readEmbed: (collection, document, id) => `Error encountered while retrieving ${document} data using ${id} from ${collection} collection`,
     update: (collection, id) => `Error encountered while updating ${id} in ${collection} collection`,
-    updateDoc: (collection, childId, parentId) => `Error encountered while updating ${childId} data using parent (${parentId}) in ${collection} collection`,
+    updateEmbed: (collection, childId, parentId) => `Error encountered while updating ${childId} data using parent (${parentId}) in ${collection} collection`,
     delete: (collection, id) => `Error encountered while deleting ${id} from ${collection} collection`,
+    deleteEmbed: (collection, childId, parentId) => `Error encountered while deleting ${childId} data using parent (${parentId}) in ${collection} collection`,
     required: field => `${field} is required`,
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
     special: field => `${field} cannot contain special characters`,
@@ -716,9 +717,9 @@ async function main() {
                     c._id = new ObjectId();
                     return c;
                 });
-                let country = await getDB().collection(DB_REL.countries)
+                let ack = await getDB().collection(DB_REL.countries)
                     .insertOne({ code, name, cities });
-                sendSuccess(res, country);
+                sendSuccess(res, ack);
             } else {
                 sendInvalidError(res, validation);
             }
@@ -755,9 +756,9 @@ async function main() {
                         update.$set.cities = cities;
                     }
 
-                    let country = await getDB().collection(DB_REL.countries)
+                    let ack = await getDB().collection(DB_REL.countries)
                         .updateOne({ "_id": ObjectId(countryId) }, update);
-                    sendSuccess(res, country);
+                    sendSuccess(res, ack);
                 } else {
                     sendInvalidError(res, validation);
                 }
@@ -774,8 +775,8 @@ async function main() {
             sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
         } else {
             try {
-                let doc = await deleteDocument(countryId, DB_REL.countries);
-                sendSuccess(res, doc);
+                let ack = await deleteDocument(countryId, DB_REL.countries);
+                sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, countryId));
             }
@@ -819,14 +820,14 @@ async function main() {
                                 }
                             }
                         };
-                        let country = await getDB().collection(DB_REL.countries)
+                        let ack = await getDB().collection(DB_REL.countries)
                             .updateOne({ "_id": ObjectId(countryId) }, update);
-                        sendSuccess(res, country);
+                        sendSuccess(res, ack);
                     } else {
                         sendInvalidError(res, validation);
                     }
                 } catch (err) {
-                    sendServerError(res, ERROR_TEMPLATE.createDoc(DB_REL.countries, "cities", countryId));
+                    sendServerError(res, ERROR_TEMPLATE.createEmbed(DB_REL.countries, "cities", countryId));
                 }
             }
         }
@@ -862,17 +863,17 @@ async function main() {
                         if (lng) {
                             update.$set["cities.$.lng"]= lng;
                         }
-                        let country = await getDB().collection(DB_REL.countries)
+                        let ack = await getDB().collection(DB_REL.countries)
                             .updateOne(
                                 { "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
                                 update
                             );
-                        sendSuccess(res, country);
+                        sendSuccess(res, ack);
                     } else {
                         sendInvalidError(res, validation);
                     }
                 } catch (err) {
-                    sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.countries, cityId, countryId));
+                    sendServerError(res, ERROR_TEMPLATE.updateEmbed(DB_REL.countries, cityId, countryId));
                 }
             }
         }
@@ -893,14 +894,14 @@ async function main() {
             sendInvalidError(res, idValidation);
         } else {
             try {
-                let doc = await getDB().collection(DB_REL.countries)
+                let ack = await getDB().collection(DB_REL.countries)
                     .updateOne(
                         { "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
                         { $pull: { cities: {"_id": ObjectId(cityId) }} }
                     );
-                sendSuccess(res, doc);
+                sendSuccess(res, ack);
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, id));
+                sendServerError(res, ERROR_TEMPLATE.deleteEmbed(DB_REL.countries, cityId, countryId));
             }
         }
     });
@@ -926,9 +927,9 @@ async function main() {
 
             if (!validation.length) {
                 let { value, name, subcats } = req.body;
-                let category = await getDB().collection(DB_REL.categories)
+                let ack = await getDB().collection(DB_REL.categories)
                     .insertOne({ value, name, subcats });
-                sendSuccess(res, category);
+                sendSuccess(res, ack);
             } else {
                 sendInvalidError(res, validation);
             }
@@ -963,9 +964,9 @@ async function main() {
                         });
                         update.$set.subcats = subcats;
                     }
-                    let category = await getDB().collection(DB_REL.categories)
+                    let ack = await getDB().collection(DB_REL.categories)
                         .updateOne({ "_id": ObjectId(id) }, update);
-                    sendSuccess(res, category);
+                    sendSuccess(res, ack);
                 } else {
                     sendInvalidError(res, validation);
                 }
@@ -982,8 +983,8 @@ async function main() {
             sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let doc = await deleteDocument(catId, DB_REL.categories);
-                sendSuccess(res, doc);
+                let ack = await deleteDocument(catId, DB_REL.categories);
+                sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.categories, catId));
             }
@@ -1026,78 +1027,98 @@ async function main() {
                                 }
                             }
                         };
-                        let category = await getDB().collection(DB_REL.categories)
+                        let ack = await getDB().collection(DB_REL.categories)
                             .updateOne({ "_id": ObjectId(catId) }, update);
-                        sendSuccess(res, category);
+                        sendSuccess(res, ack);
                     } else {
                         sendInvalidError(res, validation);
                     }
                 } catch (err) {
-                    sendServerError(res, ERROR_TEMPLATE.createDoc(DB_REL.categories, "subcats", catId));
+                    sendServerError(res, ERROR_TEMPLATE.createEmbed(DB_REL.categories, "subcats", catId));
                 }
             }
         }
     });
 
     app.put("/category/subcat", async function(req, res) {
-        let { catId, subcatId } = req.query;
-        let { name, value } = req.body;
-        let existCategory = await getCountries({ id: catId, subcat: subcatId});
+        let { catId, subcatId, name, value } = req.body;
+        let idValidation = [];
 
-        if (ObjectId.isValid(catId) && ObjectId.isValid(subcatId) && existCategory) {
-            try {
-                let validation = await validateCities({ categoryValue: existCategory[0].value, subcat: [{ name, value }] });
-                if (!validation.length) {
-                    let update = { $set: {} };
-                    if (name) {
-                        update.$set["subcats.$.name"] = name;
-                    }
-                    if (value) {
-                        update.$set["subcats.$.value"] = value;
-                    }
-                    let category = await getDB()
-                        .collection(DB_REL.countries)
-                        .updateOne({ "_id": ObjectId(catId), "subcats._id": ObjectId(subcatId) }, update);
-                    sendSuccess(res, category);
-                } else {
-                    sendInvalidError(res, validation);
-                }
-            } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.categories, subcatId, catId));
-            }
+        if (!catId || !ObjectId.isValid(catId)) {
+            idValidation.push({ field: "catId", value: catId, error: ERROR_TEMPLATE.id });
+        } 
+        if (!subcatId || !ObjectId.isValid(subcatId)) {
+            idValidation.push({ field: "subcatId", value: subcatId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (idValidation) {
+            sendInvalidError(res, idValidation);
         } else {
-            sendInvalidError(res, [
-                {field: "_id", value: catId, error: ERROR_TEMPLATE.id},
-                {field: "subcats._id", value: subcatId, error: ERROR_TEMPLATE.id},
-            ]);
+            let existCategory = await getCategories({ catId, subcat: subcatId});
+
+            if (existCategory) {
+                try {
+                    let validation = await validateSubCategories({ categoryValue: existCategory[0].value, subcat: [{ name, value }] });
+                    if (!validation.length) {
+                        let update = { $set: {} };
+                        if (name) {
+                            update.$set["subcats.$.name"] = name;
+                        }
+                        if (value) {
+                            update.$set["subcats.$.value"] = value;
+                        }
+                        let ack = await getDB().collection(DB_REL.categories)
+                            .updateOne({ "_id": ObjectId(catId), "subcats._id": ObjectId(subcatId) }, update);
+                        sendSuccess(res, ack);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.updateEmbed(DB_REL.categories, subcatId, catId));
+                }
+            }
         }
     });    
 
-    app.delete("/category/city", async function(req, res) {
-        let { cityId } = req.query;
+    app.delete("/category/subcat", async function(req, res) {
+        let { catId, subcatId } = req.body;
+        let idValidation = [];
 
-        if (ObjectId.isValid(cityId)) {
-            try {
-                let doc = await getDB().collection(DB_REL.countries).updateOne({ 
-                        "cities._id": ObjectId(cityId)
-                    }, {
-                        $pull: {"cities": {"_id": ObjectId(cityId) }}
-                });
-                sendSuccess(res, doc);
-            } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, id));
-            }
+        if (!catId || !ObjectId.isValid(catId)) {
+            idValidation.push({ field: "catId", value: catId, error: ERROR_TEMPLATE.id });
+        } 
+        if (!subcatId || !ObjectId.isValid(subcatId)) {
+            idValidation.push({ field: "subcatId", value: subcatId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (idValidation) {
+            sendInvalidError(res, idValidation);
         } else {
-            sendInvalidError(res, [{field: "cities._id", value: cityId, error: ERROR_TEMPLATE.id}]);
+            try {
+                let ack = await getDB().collection(DB_REL.categories)
+                    .updateOne(
+                        { "_id": ObjectId(catId), "subcats._id": ObjectId(subcatId) },
+                        { $pull: { subcats: {"_id": ObjectId(subcatId) }} }
+                    );
+                sendSuccess(res, ack);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.deleteEmbed(DB_REL.categories, subcatId, catId));
+            }
         }
     });    
 
     app.get("/articles", async function(req, res) {
-        try {
-            let articles = await getArticles(req.query);
-            sendSuccess(res, articles);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.read));
+        let { articleId } = req.body;
+
+        if (articleId && !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let articles = await getArticles(req.body);
+                sendSuccess(res, articles);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles));
+            }
         }
     });
 
@@ -1129,10 +1150,8 @@ async function main() {
                     isLock: false
                 };
 
-                let article = await getDB()
-                    .collection(DB_REL.articles)
-                    .insertOne(insert);
-                sendSuccess(res, article);
+                let ack = await getDB().collection(DB_REL.articles).insertOne(insert);
+                sendSuccess(res, ack);
             } else {
                 sendInvalidError(res, validation);
             }
@@ -1141,14 +1160,68 @@ async function main() {
         }
     });
 
-    app.delete("/article", async function(req, res) {
-        let { id } = req.query;
+    app.put("/article", async function(req, res) {
+        let { articleId } = req.body;
 
-        try {
-            let doc = await deleteDocument(id, DB_REL.articles);
-            sendSuccess(res, doc);
-        } catch (err) {
-            sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.articles, id));
+        if (!ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{field: "articleId", value: articleId, error: ERROR_TEMPLATE.id}]);
+        } else {
+            try {
+                let validation = await validateArticle(req.body);
+
+                if (!validation.length) {
+                    let { title, description, details, photos, tags, categories, contributor } = req.body;
+                    let update = { $set: {} };
+
+                    contributor.displayName = contributor.displayName || contributor.name;
+                    contributor.isLastMod = true;
+                    
+                    if (title) {
+                        update.$set.title = title;
+                    }
+                    if (description) {
+                        update.$set.title = title;
+                    }
+                    if (details) {
+                        update.$set.details = details;
+                    }
+                    if (photos) {
+                        update.$set.photos = photos;
+                    }
+                    if (tags) {
+                        update.$set.tags = tags;
+                    }
+                    if (categories) {
+                        update.$set.categories = categories;
+                    }
+                    if (contributor) {
+                        update.$set.contributor = contributor;
+                    }  
+
+                    let ack = await getDB().collection(DB_REL.articles)
+                        .updateOne({ "_id": ObjectId(articleId) }, update);
+                    sendSuccess(res, ack);
+                } else {
+                    sendInvalidError(res, validation);
+                }
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.update(DB_REL.articles, articleId));
+            }
+        }
+    });
+
+    app.delete("/article", async function(req, res) {
+        let { articleId } = req.body;
+
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let ack = await deleteDocument(id, DB_REL.articles);
+                sendSuccess(res, ack);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.articles, articleId));
+            }
         }
     });
 
@@ -1160,7 +1233,7 @@ async function main() {
                 let article = await getArticleContributors(id, email);
                 sendSuccess(res, article);
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.readDoc(DB_REL.articles, "contributor", id));
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "contributor", id));
             }
         } else {
             sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
