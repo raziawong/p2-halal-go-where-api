@@ -255,12 +255,14 @@ async function main() {
         return articles;
     }
 
-    async function getArticleContributors(articleId, email) {
+    async function getArticleContributors({articleId, email}) {
         let criteria = {};
         let projectOpt = {
             projection: {
                 title: 1,
                 "contributors.displayName": 1,
+                "contributors.isAuthor": 1,
+                "contributors.isLastMod": 1,
                 createdDate: 1,
                 lastModified: 1
             }
@@ -571,7 +573,7 @@ async function main() {
                     field: "contributor.email", 
                     error: ERROR_TEMPLATE.required("Article Contributor Email")
                 });
-            } else if (!REGEX.email.test(cEmail)) {
+            } else if (!REGEX.email.test(cEmail) || typeof cEmail !== "string") {
                 validation.push({ 
                     field: "contributor.email",
                      value: cEmail, 
@@ -1225,64 +1227,154 @@ async function main() {
         }
     });
 
-    app.get("/article/contributors", async function(req, res) {
-        let { email, id } = req.query;
+    app.get("/article/contributor", async function(req, res) {
+        let { articleId, email } = req.body;
+        let validation = [];
 
-        if (ObjectId.isValid(id)) {
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            validation.push({field: "articleId", value: articleId, error: ERROR_TEMPLATE.id});
+        } else {
+            if (!email) {
+                validation.push({
+                    field: "email",
+                    error: ERROR_TEMPLATE.required("Contributor Email")
+                });
+            } else if (REGEX.email.test(email) || typeof email !== string) {
+                validation.push({
+                    field: "email",
+                    value: email,
+                    error: ERROR_TEMPLATE.email("Contributor Email")
+                });
+            }    
+        }
+
+        if (validation) {
+            sendInvalidError(res, validation);
+        } else {
             try {
-                let article = await getArticleContributors(id, email);
+                let article = await getArticleContributors({articleId, email});
                 sendSuccess(res, article);
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "contributor", id));
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "contributors", id));
             }
-        } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
-    app.put("/article/rate", async function(req, res) {
-        let { id, rating } = req.query;
+    app.put("/article/rating", async function(req, res) {
+        let { articleId, rating } = req.body;
 
-        if (ObjectId.isValid(id)) {
-            try {
-                let validation = [];
-
-                if (!rating) {
-                    validation.push({
-                        field: "rating",
-                        error: ERROR_TEMPLATE.required("Rating")
-                    });
-                } else if (isNaN(rating)) {
-                    validation.push({
-                        field: "rating",
-                        value: rating,
-                        error: "Rating must be of number type",
-                    });
-                } else if (rating < 0 || rating > 5) {
-                    validation.push({
-                        field: "avg",
-                        value: rating,
-                        error: "Rating cannot be less than 0 or more than 5",
-                    });
-                }
-
-                if (!validation.length) {
-                    let update = {
-                        $set: { avg: rating },
-                        $inc: { count: 1 }
-                    };
-                    let article = await getDB()
-                        .collection(DB_REL.articles)
-                        .updateOne({ '_id': ObjectId(id) }, update);
-                    sendSuccess(res, article);
-                } else {
-                    sendInvalidError(res, validation);
-                }
-            } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.articles, "rating", id));
-            }
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{field: "articleId", value: articleId, error: ERROR_TEMPLATE.id}]);
         } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
+            let existArticle = await getArticles({ articleId });
+
+            if (existArticle) {
+                try {
+                    let validation = [];
+    
+                    if (!rating) {
+                        validation.push({
+                            field: "rating",
+                            error: ERROR_TEMPLATE.required("Rating")
+                        });
+                    } else if (isNaN(rating)) {
+                        validation.push({
+                            field: "rating",
+                            value: rating,
+                            error: "Rating must be of number type",
+                        });
+                    } else if (rating < 0 || rating > 5) {
+                        validation.push({
+                            field: "avg",
+                            value: rating,
+                            error: "Rating cannot be less than 0 or more than 5",
+                        });
+                    }
+    
+                    if (!validation.length) {
+                        let update = {
+                            $set: { avg: rating },
+                            $inc: { count: 1 }
+                        };
+                        let article = await getDB()
+                            .collection(DB_REL.articles)
+                            .updateOne({ "_id": ObjectId(id) }, update);
+                        sendSuccess(res, article);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.createEmbed(DB_REL.articles, "rating", articleId));
+                }
+            }
+        }
+    });
+
+    app.post("/article/comment", async function(req, res) {
+        let { articleId, name, content, email } = req.body;
+
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{field: "articleId", value: articleId, error: ERROR_TEMPLATE.id}]);
+        } else {
+            let existArticle = await getArticles({ articleId });
+
+            if (existArticle) {
+                try {
+                    let validation = [];
+    
+                    if (!name) {
+                        validation.push({
+                            field: "name",
+                            error: ERROR_TEMPLATE.required("Comment Name")
+                        });
+                    } else if (!REGEX.displayName.test(name)) {
+                        validation.push({
+                            field: "name",
+                            value: name,
+                            error: ERROR_TEMPLATE.special("Comment Name")
+                        });
+                    }
+                    if (!email) {
+                        validation.push({
+                            field: "content",
+                            error: ERROR_TEMPLATE.required("Comment Email")
+                        });
+                    } else if (!REGEX.email.test(email)) {
+                        validation.push({
+                            field: "email",
+                            value: email,
+                            error: ERROR_TEMPLATE.email("Comment Email")
+                        });
+                    }
+                    if (!content) {
+                        validation.push({
+                            field: "content",
+                            error: ERROR_TEMPLATE.required("Comment Content")
+                        });
+                    }
+    
+                    if (!validation.length) {
+                        let update = {
+                            $push: { 
+                                comments: {
+                                    _id: new ObjectId(),
+                                    name,
+                                    content,
+                                    email,
+                                    createdDate: new Date()
+                                }
+                            }
+                        };
+                        let article = await getDB().collection(DB_REL.articles)
+                            .updateOne({ "_id": ObjectId(id) }, update);
+                        sendSuccess(res, article);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.createEmbed(DB_REL.articles, "comment", articleId));
+                }
+            }
         }
     });
 }
