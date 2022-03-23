@@ -926,8 +926,7 @@ async function main() {
 
             if (!validation.length) {
                 let { value, name, subcats } = req.body;
-                let category = await getDB()
-                    .collection(DB_REL.categories)
+                let category = await getDB().collection(DB_REL.categories)
                     .insertOne({ value, name, subcats });
                 sendSuccess(res, category);
             } else {
@@ -939,11 +938,13 @@ async function main() {
     });
 
     app.put("/category", async function(req, res) {
-        let { id } = req.query;
+        let { catId } = req.body;
 
-        if (ObjectId.isValid(id)) {
+        if (!catId || !ObjectId.isValid(catId)) {
+            sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
+        } else {
             try {
-                let validation = await validateCategory({ id, ...req.body }, false);
+                let validation = await validateCategory(req.body, false);
 
                 if (!validation.length) {
                     let { name, subcats } = req.body;
@@ -952,7 +953,7 @@ async function main() {
                         update.$set.name = name;
                     }
                     if (subcats) {
-                        let categoryQ = await getCategories({ id }, true);
+                        let categoryQ = await getCategories({ catId }, true);
                         subcats = [...categoryQ.subcats, ...subcats];
                         subcats = subcats.map(s => {
                             if (!s._id) {
@@ -962,8 +963,7 @@ async function main() {
                         });
                         update.$set.subcats = subcats;
                     }
-                    let category = await getDB()
-                        .collection(DB_REL.categories)
+                    let category = await getDB().collection(DB_REL.categories)
                         .updateOne({ "_id": ObjectId(id) }, update);
                     sendSuccess(res, category);
                 } else {
@@ -972,25 +972,125 @@ async function main() {
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.update(DB_REL.categories, id));
             }
-        } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
 
     app.delete("/category", async function(req, res) {
-        let { id } = req.query;
+        let { catId } = req.body;
 
-        if (ObjectId.isValid(id)) {
+        if (!catId || !ObjectId.isValid(catId)) {
+            sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
+        } else {
             try {
-                let doc = await deleteDocument(id, DB_REL.categories);
+                let doc = await deleteDocument(catId, DB_REL.categories);
                 sendSuccess(res, doc);
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.categories, id));
+                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.categories, catId));
             }
-        } else {
-            sendInvalidError(res, [{field: "_id", value: id, error: ERROR_TEMPLATE.id}]);
         }
     });
+
+    app.get("/categories/subcats", async function(req, res) {
+        let { catId } = req.body;
+
+        if (catId && !ObjectId.isValid(catId)) {
+            sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let categories = await getCategories(req.body, true);
+                sendSuccess(res, categories);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.update(DB_REL.categories));
+            }
+        }
+    });
+
+    app.post("/category/subcat", async function(req, res) {
+        let { catId, name, value } = req.body;
+
+        if (!catId || !ObjectId.isValid(catId)) {
+            sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            let existCategory = await getCategories({ catId });
+
+            if (existCategory) {
+                try {
+                    let validation = await validateSubCategories({ categoryValue: existCategory[0].value, subcats: [{name, value}] });
+                    if (!validation.length) {
+                        let update = {
+                            $push: { 
+                                subcats: {
+                                    _id: new ObjectId(),
+                                    name,
+                                    value
+                                }
+                            }
+                        };
+                        let category = await getDB().collection(DB_REL.categories)
+                            .updateOne({ "_id": ObjectId(catId) }, update);
+                        sendSuccess(res, category);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.createDoc(DB_REL.categories, "subcats", catId));
+                }
+            }
+        }
+    });
+
+    app.put("/category/subcat", async function(req, res) {
+        let { catId, subcatId } = req.query;
+        let { name, value } = req.body;
+        let existCategory = await getCountries({ id: catId, subcat: subcatId});
+
+        if (ObjectId.isValid(catId) && ObjectId.isValid(subcatId) && existCategory) {
+            try {
+                let validation = await validateCities({ categoryValue: existCategory[0].value, subcat: [{ name, value }] });
+                if (!validation.length) {
+                    let update = { $set: {} };
+                    if (name) {
+                        update.$set["subcats.$.name"] = name;
+                    }
+                    if (value) {
+                        update.$set["subcats.$.value"] = value;
+                    }
+                    let category = await getDB()
+                        .collection(DB_REL.countries)
+                        .updateOne({ "_id": ObjectId(catId), "subcats._id": ObjectId(subcatId) }, update);
+                    sendSuccess(res, category);
+                } else {
+                    sendInvalidError(res, validation);
+                }
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.updateDoc(DB_REL.categories, subcatId, catId));
+            }
+        } else {
+            sendInvalidError(res, [
+                {field: "_id", value: catId, error: ERROR_TEMPLATE.id},
+                {field: "subcats._id", value: subcatId, error: ERROR_TEMPLATE.id},
+            ]);
+        }
+    });    
+
+    app.delete("/category/city", async function(req, res) {
+        let { cityId } = req.query;
+
+        if (ObjectId.isValid(cityId)) {
+            try {
+                let doc = await getDB().collection(DB_REL.countries).updateOne({ 
+                        "cities._id": ObjectId(cityId)
+                    }, {
+                        $pull: {"cities": {"_id": ObjectId(cityId) }}
+                });
+                sendSuccess(res, doc);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.countries, id));
+            }
+        } else {
+            sendInvalidError(res, [{field: "cities._id", value: cityId, error: ERROR_TEMPLATE.id}]);
+        }
+    });    
 
     app.get("/articles", async function(req, res) {
         try {
