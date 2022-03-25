@@ -694,13 +694,13 @@ async function main() {
     }
 
     app.get("/countries", async function(req, res) {
-        let { countryId } = req.body;
+        let { countryId } = req.query;
 
         if (countryId && !ObjectId.isValid(countryId)) {
             sendInvalidError(res, [{ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let countries = await getCountries(req.body);
+                let countries = await getCountries(req.query);
                 sendSuccess(res, countries);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
@@ -786,13 +786,13 @@ async function main() {
     });
 
     app.get("/countries/cities", async function(req, res) {
-        let { countryId } = req.body;
+        let { countryId } = req.query;
 
         if (countryId && !ObjectId.isValid(countryId)) {
             sendInvalidError(res, [{ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let countries = await getCountries(req.body, true);
+                let countries = await getCountries(req.query, true);
                 sendSuccess(res, countries);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.countries));
@@ -909,13 +909,13 @@ async function main() {
     });
 
     app.get("/categories", async function(req, res) {
-        let { catId } = req.body;
+        let { catId } = req.query;
 
         if (catId && !ObjectId.isValid(catId)) {
             sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let categories = await getCategories(req.body);
+                let categories = await getCategories(req.query);
                 sendSuccess(res, categories);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.categories));
@@ -994,13 +994,13 @@ async function main() {
     });
 
     app.get("/categories/subcats", async function(req, res) {
-        let { catId } = req.body;
+        let { catId } = req.query;
 
         if (catId && !ObjectId.isValid(catId)) {
             sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let categories = await getCategories(req.body, true);
+                let categories = await getCategories(req.query, true);
                 sendSuccess(res, categories);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.update(DB_REL.categories));
@@ -1110,13 +1110,13 @@ async function main() {
     });    
 
     app.get("/articles", async function(req, res) {
-        let { articleId } = req.body;
+        let { articleId } = req.query;
 
         if (articleId && !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let articles = await getArticles(req.body);
+                let articles = await getArticles(req.query);
                 sendSuccess(res, articles);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles));
@@ -1228,7 +1228,7 @@ async function main() {
     });
 
     app.get("/article/contributor", async function(req, res) {
-        let { articleId, email } = req.body;
+        let { articleId, email } = req.query;
         let validation = [];
 
         if (!articleId || !ObjectId.isValid(articleId)) {
