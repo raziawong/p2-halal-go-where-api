@@ -74,9 +74,15 @@ async function main() {
     async function createArticlesIndex() {
         await getDB().collection(DB_REL.articles)
             .createIndex(
-                { title: "text", description: "text", "details.content": "text", createdDate: 1 }, 
+                { title: "text", description: "text", "details.content": "text" }, 
                 { name: "ArticlesSearchIndex" }
             );
+
+        await getDB().collection(DB_REL.articles)
+            .createIndex(
+                { title: 1, createdDate: 1 }, 
+                { name: "ArticlesSortIndex" }
+        );    
     }
 
     async function getCountries({ countryId, code, name, city }, showCity = false) {
