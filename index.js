@@ -50,9 +50,9 @@ async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
     await createArticlesIndex();
 
-    function sendSuccess(res, data) {
+    function sendSuccess(res, results) {
         res.status(200);
-        res.json({ data, count: data.length });
+        res.json({ results, count: results.length });
     }
 
     function sendInvalidError(res, details) {
@@ -73,7 +73,10 @@ async function main() {
 
     async function createArticlesIndex() {
         await getDB().collection(DB_REL.articles)
-            .createIndex({ title: "text", description: "text", "details.content": "text" }, { name: "ArticlesSearchIndex" });
+            .createIndex(
+                { title: "text", description: "text", "details.content": "text", createdDate: 1 }, 
+                { name: "ArticlesSearchIndex" }
+            );
     }
 
     async function getCountries({ countryId, code, name, city }, showCity = false) {
@@ -255,7 +258,7 @@ async function main() {
         return articles;
     }
 
-    async function getArticleContributors({articleId, email}) {
+    async function getArticleContributors({ articleId, email }) {
         let criteria = {};
         let projectOpt = {
             projection: {
