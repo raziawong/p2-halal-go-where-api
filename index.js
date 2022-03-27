@@ -630,7 +630,23 @@ async function main() {
                 error: ERROR_TEMPLATE.required("Article Contributor")
             });
         } else {
-            let { name: cName, email: cEmail } = contributor;
+            let { displayName, name: cName, email: cEmail } = contributor;
+            if (displayName) {
+                if (REGEX.spaces.test(displayName)) {
+                    validation.push({
+                        field: "contributor.displayName",
+                        value: displayName,
+                        error: ERROR_TEMPLATE.spaces("Article Contributor Display Name")
+                    });
+                }
+                if (!REGEX.displayName.test(displayName)) {
+                    validation.push({
+                        field: "contributor.displayName",
+                        value: displayName,
+                        error: ERROR_TEMPLATE.special("Article Contributor Display Name")
+                    });
+                }
+            }
             if (!cName) {
                 validation.push({
                     field: "contributor.name",
