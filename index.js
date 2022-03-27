@@ -31,7 +31,7 @@ const ERROR_TEMPLATE = {
     create: collection => `Error encountered while adding data to ${collection} collection`,
     createEmbed: (collection, document, id) => `Error encountered while adding ${document} data using parent (${id}) to ${collection} collection`,
     read: collection => `Error encountered while retrieving data from ${collection} collection`,
-    readEmbed: (collection, document, id) => `Error encountered while retrieving ${document} data using ${id} from ${collection} collection`,
+    readEmbed: (collection, document, id) => `Error encountered while retrieving ${document} data ${id ? 'using ' + id + ' ' : ''}from ${collection} collection`,
     update: (collection, id) => `Error encountered while updating ${id} in ${collection} collection`,
     updateEmbed: (collection, childId, parentId) => `Error encountered while updating ${childId} data using parent (${parentId}) in ${collection} collection`,
     delete: (collection, id) => `Error encountered while deleting ${id} from ${collection} collection`,
@@ -281,6 +281,28 @@ async function main() {
                 $elemMatch: { email }
             }
         }
+
+        let article = await getDB().collection(DB_REL.articles)
+            .find(criteria, projectOpt).toArray();
+
+        return article;
+    }
+
+    async function getArticleTags({ articleId }) {
+        let criteria = {};
+        let projectOpt = {
+            projection: {
+                tags: 1,
+                createdDate: 1,
+                lastModified: 1
+            }
+        };
+
+        if (articleId) {
+            criteria._id = ObjectId(articleId);
+        }
+        
+        criteria = { ...criteria, "tags.0" : {$exists: true } };
 
         let article = await getDB().collection(DB_REL.articles)
             .find(criteria, projectOpt).toArray();
@@ -1242,6 +1264,26 @@ async function main() {
         }
     });
 
+    app.get("/articles/tags", async function (req, res) {
+        let { articleId } = req.query;
+        let validation = [];
+
+        if (articleId && !ObjectId.isValid(articleId)) {
+            validation.push({ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (validation.length) {
+            sendInvalidError(res, validation);
+        } else {
+            try {
+                let article = await getArticleTags({ articleId });
+                sendSuccess(res, article);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "tags", articleId ? articleId : ""));
+            }
+        }
+    })
+
     app.post("/article", async function(req, res) {
         try {
             let validation = await validateArticle(req.body);
@@ -1373,7 +1415,7 @@ async function main() {
                 let article = await getArticleContributors({ articleId, email });
                 sendSuccess(res, article);
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "contributors", id));
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "contributors", articleId));
             }
         }
     });
