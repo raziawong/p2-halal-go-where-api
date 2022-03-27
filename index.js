@@ -19,6 +19,7 @@ const DB_REL = {
 };
 
 const REGEX = {
+    spaces: new RegExp(/^[\s]*$/),
     displayName: new RegExp(/^[A-Za-zÀ-ȕ\s\-]*$/),
     optionValue: new RegExp(/^[A-Za-z0-9\-]*$/),
     email: new RegExp(/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/),
@@ -37,13 +38,14 @@ const ERROR_TEMPLATE = {
     deleteEmbed: (collection, childId, parentId) => `Error encountered while deleting ${childId} data using parent (${parentId}) in ${collection} collection`,
     required: field => `${field} is required`,
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
+    spaces: field => `${field} cannot contain only space( s)`,
     special: field => `${field} cannot contain special characters`,
     specialSpace: field => `${field} cannot contain special characters and/or spaces`,
     length: (field, length) => `${field} cannot exceed ${length} characters including spaces`,
     email: field => `${field} is not a valid email address`,
     url: field => `${field} is not a valid URL`,
     exists: (field, id, collection) => `${field} must be unique and it already exists, please do update on ${id} in ${collection} collection instead`,
-    notExist: (object, collection)  => `${object} does not exists, please do add to ${collection} collection instead`
+    notExist: (object, collection) => `${object} does not exists, please do add to ${collection} collection instead`
 }
 
 async function main() {
@@ -73,16 +75,10 @@ async function main() {
 
     async function createArticlesIndex() {
         await getDB().collection(DB_REL.articles)
-            .createIndex(
-                { title: "text", description: "text", "details.content": "text" }, 
-                { name: "ArticlesSearchIndex" }
-            );
+            .createIndex({ title: "text", description: "text", "details.content": "text" }, { name: "ArticlesSearchIndex" });
 
         await getDB().collection(DB_REL.articles)
-            .createIndex(
-                { title: 1, createdDate: 1 }, 
-                { name: "ArticlesSortIndex" }
-        );    
+            .createIndex({ title: 1, createdDate: 1 }, { name: "ArticlesSortIndex" });
     }
 
     async function getCountries({ countryId, code, name, city }, showCity = false) {
@@ -302,8 +298,8 @@ async function main() {
         if (isNew) {
             let countriesQ = await getCountries({ code });
             if (!code) {
-                validation.push({ 
-                    field: "code", 
+                validation.push({
+                    field: "code",
                     error: ERROR_TEMPLATE.required("Country Code")
                 });
             } else if (code.length !== 2 || typeof code !== "string") {
@@ -343,12 +339,21 @@ async function main() {
                 }
             }
         }
-        if (name && !REGEX.displayName.test(name)) {
-            validation.push({
-                field: "name",
-                value: name,
-                error: ERROR_TEMPLATE.special("Country Name")
-            });
+        if (name) {
+            if (!REGEX.displayName.test(name)) {
+                validation.push({
+                    field: "name",
+                    value: name,
+                    error: ERROR_TEMPLATE.special("Country Name")
+                });
+            }
+            if (REGEX.spaces.test(name)) {
+                validation.push({
+                    field: "name",
+                    value: name,
+                    error: ERROR_TEMPLATE.spaces("Country Name")
+                });
+            }
         }
 
         validation = [...validation, ...await validateCities({ countryCode: code, cities })];
@@ -365,12 +370,21 @@ async function main() {
                         field: "cities.name",
                         error: ERROR_TEMPLATE.required("City Name")
                     });
-                } else if (!REGEX.displayName.test(c.name)) {
-                    validation.push({
-                        field: "cities.name",
-                        value: c.name,
-                        error: ERROR_TEMPLATE.special("City Name")
-                    });
+                } else {
+                    if (!REGEX.displayName.test(c.name)) {
+                        validation.push({
+                            field: "cities.name",
+                            value: c.name,
+                            error: ERROR_TEMPLATE.special("City Name")
+                        });
+                    }
+                    if (REGEX.spaces.test(c.name)) {
+                        validation.push({
+                            field: "cities.name",
+                            value: c.name,
+                            error: ERROR_TEMPLATE.spaces("City Name")
+                        });
+                    }
                 }
                 if (countryCode) {
                     let countryQ = await getCountries({ countryCode, city: c.name });
@@ -408,8 +422,8 @@ async function main() {
 
         if (isNew) {
             if (!value) {
-                validation.push({ 
-                    field: "value", 
+                validation.push({
+                    field: "value",
                     error: ERROR_TEMPLATE.required("Category Value")
                 });
             } else {
@@ -422,8 +436,8 @@ async function main() {
                 }
             }
             if (!name) {
-                validation.push({ 
-                    field: "name", 
+                validation.push({
+                    field: "name",
                     error: ERROR_TEMPLATE.required("Category Name")
                 });
             }
@@ -451,12 +465,21 @@ async function main() {
                 error: ERROR_TEMPLATE.specialSpace("Category Value")
             });
         }
-        if (name && !REGEX.displayName.test(name)) {
-            validation.push({
-                field: "name",
-                value: name,
-                error: ERROR_TEMPLATE.special("Category Name")
-            });
+        if (name) {
+            if (!REGEX.displayName.test(name)) {
+                validation.push({
+                    field: "name",
+                    value: name,
+                    error: ERROR_TEMPLATE.special("Category Name")
+                });
+            }
+            if (REGEX.spaces.test(name)) {
+                validation.push({
+                    field: "name",
+                    value: name,
+                    error: ERROR_TEMPLATE.spaces("Category Name")
+                });
+            }
         }
 
         validation = [...validation, ...await validateSubCategories({ categoryValue: value, subcats })];
@@ -468,19 +491,47 @@ async function main() {
 
         if (subcats) {
             subcats.map(async(t) => {
-                if (!REGEX.displayName.test(t.name)) {
+                if (!t.name) {
                     validation.push({
                         field: "subcats.name",
-                        value: t.name,
-                        error: ERROR_TEMPLATE.special("Sub-categories Name")
+                        error: ERROR_TEMPLATE.required("Sub-categories Name")
                     });
-                } 
-                if (!REGEX.optionValue.test(t.value)) {
+                } else {
+                    if (!REGEX.displayName.test(t.name)) {
+                        validation.push({
+                            field: "subcats.name",
+                            value: t.name,
+                            error: ERROR_TEMPLATE.special("Sub-categories Name")
+                        });
+                    }
+                    if (REGEX.spaces.test(t.name)) {
+                        validation.push({
+                            field: "subcats.name",
+                            value: t.name,
+                            error: ERROR_TEMPLATE.spaces("Sub-categories Name")
+                        });
+                    }
+                }
+                if (!t.value) {
                     validation.push({
                         field: "subcats.value",
-                        value: t.value,
-                        error: ERROR_TEMPLATE.specialSpace("Sub-categories Value")
+                        error: ERROR_TEMPLATE.required("Sub-categories Value")
                     });
+                } else {
+                    if (!REGEX.optionValue.test(t.value)) {
+                        validation.push({
+                            field: "subcats.value",
+                            value: t.value,
+                            error: ERROR_TEMPLATE.specialSpace("Sub-categories Value")
+                        });
+                    }
+                    if (REGEX.spaces.test(t.value)) {
+                        validation.push({
+                            field: "subcats.value",
+                            value: t.value,
+                            error: ERROR_TEMPLATE.spaces("Sub-categories Value")
+                        });
+                    }
                 }
                 if (categoryValue) {
                     let categoryQ = await getCategories({ categoryValue, subcat: t.value });
@@ -503,44 +554,60 @@ async function main() {
         let validation = [];
 
         if (!title) {
-            validation.push({ 
-                field: "title", 
+            validation.push({
+                field: "title",
                 error: ERROR_TEMPLATE.required("Article Title")
             });
         } else {
+            if (REGEX.spaces.test(title)) {
+                validation.push({
+                    field: "title",
+                    value: title,
+                    error: ERROR_TEMPLATE.spaces("Article Title")
+                });
+            }
             if (title.length > 50) {
-                validation.push({ 
-                    field: "title", 
-                    value: title, 
+                validation.push({
+                    field: "title",
+                    value: title,
                     error: ERROR_TEMPLATE.length("Article Title", "50")
                 });
             }
             if (!REGEX.displayName.test(title)) {
-                validation.push({ 
-                    field: "title", 
-                    value: title, 
-                    error: ERROR_TEMPLATE.special("Article Title") 
+                validation.push({
+                    field: "title",
+                    value: title,
+                    error: ERROR_TEMPLATE.special("Article Title")
                 });
             }
         }
         if (!description) {
-            validation.push({ 
-                field: "description", 
+            validation.push({
+                field: "description",
                 error: ERROR_TEMPLATE.required("Article Description")
             });
-        } else if (description.length > 150) {
-            validation.push({ 
-                field: "description", 
-                value: description, 
-                error: ERROR_TEMPLATE.length("Article Description", "150")
-            });
+        } else {
+            if (REGEX.spaces.test(description)) {
+                validation.push({
+                    field: "description",
+                    value: description,
+                    error: ERROR_TEMPLATE.spaces("Article Description")
+                });
+            }
+            if (description.length > 150) {
+                validation.push({
+                    field: "description",
+                    value: description,
+                    error: ERROR_TEMPLATE.length("Article Description", "150")
+                });
+            }
         }
         if (photos) {
             photos.map(p => {
                 if (!REGEX.url.test(p)) {
-                    validation.push({ 
-                        field: "photos.$", 
-                        value: p, 
+                    validation.push({
+                        field: "photos.$",
+                        value: p,
                         error: ERROR_TEMPLATE.url("Article Photo URL")
                     });
                 }
@@ -549,81 +616,87 @@ async function main() {
         if (tags) {
             tags.map(t => {
                 if (!REGEX.displayName.test(t)) {
-                    validation.push({ 
-                        field: "tags.$", 
-                        value: t, 
-                        error: ERROR_TEMPLATE.special("Article Tag") 
+                    validation.push({
+                        field: "tags.$",
+                        value: t,
+                        error: ERROR_TEMPLATE.special("Article Tag")
                     });
                 }
             });
         }
         if (!contributor) {
-            validation.push({ 
-                field: "contributor", 
+            validation.push({
+                field: "contributor",
                 error: ERROR_TEMPLATE.required("Article Contributor")
             });
         } else {
-            let cName = contributor.name;
-            let cEmail = contributor.email;
+            let { name: cName, email: cEmail } = contributor;
             if (!cName) {
-                validation.push({ 
-                    field: "contributor.name", 
+                validation.push({
+                    field: "contributor.name",
                     error: ERROR_TEMPLATE.required("Article Contributor Name")
                 });
-            } else if (!REGEX.displayName.test(cName)) {
-                validation.push({ 
-                    field: "contributor.name", 
-                    value: cName, 
-                    error: ERROR_TEMPLATE.special("Article Contributor Name")
-                });
+            } else {
+                if (REGEX.spaces.test(cName)) {
+                    validation.push({
+                        field: "contributor.name",
+                        value: cName,
+                        error: ERROR_TEMPLATE.spaces("Article Contributor Name")
+                    });
+                }
+                if (!REGEX.displayName.test(cName)) {
+                    validation.push({
+                        field: "contributor.name",
+                        value: cName,
+                        error: ERROR_TEMPLATE.special("Article Contributor Name")
+                    });
+                }
             }
             if (!cEmail) {
-                validation.push({ 
-                    field: "contributor.email", 
+                validation.push({
+                    field: "contributor.email",
                     error: ERROR_TEMPLATE.required("Article Contributor Email")
                 });
             } else if (!REGEX.email.test(cEmail) || typeof cEmail !== "string") {
-                validation.push({ 
+                validation.push({
                     field: "contributor.email",
-                     value: cEmail, 
-                     error: ERROR_TEMPLATE.email("Article Contributor Email")
+                    value: cEmail,
+                    error: ERROR_TEMPLATE.email("Article Contributor Email")
                 });
             }
         }
         if (!location) {
-            validation.push({ 
-                field: "location", 
+            validation.push({
+                field: "location",
                 error: ERROR_TEMPLATE.required("Article Location")
             });
         } else {
-            let countryId = location.countryId;
-            let cityId = location.cityId;
-            let address = location.address;
+            let { countryId, cityId, address } = location;
             if (!countryId) {
-                validation.push({ 
-                    field: "location.countryId", 
+                validation.push({
+                    field: "location.countryId",
                     error: ERROR_TEMPLATE.required("Article Location Country Id")
                 });
             } else {
                 let countryQ = await getCountries({ id: countryId });
                 if (!countryQ) {
-                    validation.push({ 
-                        field: "location.countryId", 
-                        value: countryId, 
+                    validation.push({
+                        field: "location.countryId",
+                        value: countryId,
                         error: ERROR_TEMPLATE.notExist("Article Location Country Id", DB_REL.countries)
                     });
                 } else {
                     if (!cityId) {
-                        validation.push({ 
-                            field: "location.cityId", 
+                        validation.push({
+                            field: "location.cityId",
                             error: ERROR_TEMPLATE.required("Article Location City Id")
                         });
                     } else {
                         let cityQ = await getCountries({ id: countryId, city: cityId });
                         if (!cityQ) {
-                            validation.push({ 
-                                field: "location.cityId", 
-                                value: cityId, 
+                            validation.push({
+                                field: "location.cityId",
+                                value: cityId,
                                 error: ERROR_TEMPLATE.notExist("Article Location City Id", DB_REL.countries)
                             });
                         }
@@ -631,40 +704,46 @@ async function main() {
                 }
             }
             if (!address) {
-                validation.push({ 
-                    field: "location.address", 
+                validation.push({
+                    field: "location.address",
                     error: ERROR_TEMPLATE.required("Article Location Address")
+                });
+            } else if (REGEX.spaces.test(address)) {
+                validation.push({
+                    field: "address",
+                    value: address,
+                    error: ERROR_TEMPLATE.spaces("Article Location Address")
                 });
             }
         }
         if (!categories) {
-            validation.push({ 
-                field: "categories", 
+            validation.push({
+                field: "categories",
                 error: ERROR_TEMPLATE.required("Article Categories")
             });
         } else {
             categories.map(async(c) => {
                 let catId = c.catId;
                 if (!catId) {
-                    validation.push({ 
-                        field: "categories.catId", 
+                    validation.push({
+                        field: "categories.catId",
                         error: ERROR_TEMPLATE.required("Article Category Id")
                     });
                 } else {
                     let categoryQ = await getCountries({ id: catId });
                     if (ObjectId.isValid(catId) || !categoryQ) {
-                        validation.push({ 
-                            field: "categories.catId", 
-                            value: catId, 
+                        validation.push({
+                            field: "categories.catId",
+                            value: catId,
                             error: ERROR_TEMPLATE.notExist("Article Category Id", DB_REL.categories)
                         });
                     } else {
                         c.subcatIds.map(async(subcat) => {
                             let subCatQ = await getCountries({ id: catId, subcat });
                             if (ObjectId.isValid(s) || !subCatQ) {
-                                validation.push({ 
-                                    field: "location.subcatIds", 
-                                    value: subcat, 
+                                validation.push({
+                                    field: "location.subcatIds",
+                                    value: subcat,
                                     error: ERROR_TEMPLATE.notExist("Article Sub-category Id", DB_REL.categories)
                                 });
                             }
@@ -676,23 +755,30 @@ async function main() {
         if (details) {
             details.map(d => {
                 if (!d.sectionName) {
-                    validation.push({ 
-                        field: "details.sectionName", 
+                    validation.push({
+                        field: "details.sectionName",
                         error: ERROR_TEMPLATE.required("Article Section Name")
                     });
                 } else {
                     if (!REGEX.displayName.test(d.sectionName)) {
-                        validation.push({ 
-                            field: "details.sectionName", 
-                            value: d.sectionName, 
+                        validation.push({
+                            field: "details.sectionName",
+                            value: d.sectionName,
                             error: ERROR_TEMPLATE.required("Article Section Name")
                         });
                     }
                     if (!d.content) {
-                        validation.push({ 
-                            field: "details.content", 
+                        validation.push({
+                            field: "details.content",
                             error: ERROR_TEMPLATE.required("Article Section Content")
                         });
+                    } else if (REGEX.spaces.test(d.content)) {
+                        validation.push({
+                            field: "details.content",
+                            value: d.content,
+                            error: ERROR_TEMPLATE.spaces("Article Section Content")
+                        });
+
                     }
                 }
                 return d;
@@ -743,7 +829,7 @@ async function main() {
         let { countryId } = req.body;
 
         if (!ObjectId.isValid(countryId)) {
-            sendInvalidError(res, [{field: "countryId", value: countryId, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
                 let validation = await validateCountry(req.body, false);
@@ -783,7 +869,7 @@ async function main() {
         let { countryId } = req.body;
 
         if (!ObjectId.isValid(countryId)) {
-            sendInvalidError(res, [{field: "_id", value: countryId, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{ field: "_id", value: countryId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
                 let ack = await deleteDocument(countryId, DB_REL.countries);
@@ -819,10 +905,10 @@ async function main() {
 
             if (existCountry) {
                 try {
-                    let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{name, lat, lng}] });
+                    let validation = await validateCities({ countryCode: existCountry[0].code, cities: [{ name, lat, lng }] });
                     if (!validation.length) {
                         let update = {
-                            $push: { 
+                            $push: {
                                 cities: {
                                     _id: new ObjectId(),
                                     name,
@@ -850,7 +936,7 @@ async function main() {
 
         if (!countryId || !ObjectId.isValid(countryId)) {
             idValidation.push({ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id });
-        } 
+        }
         if (!cityId || !ObjectId.isValid(cityId)) {
             idValidation.push({ field: "cityId", value: cityId, error: ERROR_TEMPLATE.id });
         }
@@ -858,7 +944,7 @@ async function main() {
         if (idValidation) {
             sendInvalidError(res, idValidation);
         } else {
-            let existCountry = await getCountries({ countryId, city: cityId});
+            let existCountry = await getCountries({ countryId, city: cityId });
 
             if (existCountry) {
                 try {
@@ -872,11 +958,10 @@ async function main() {
                             update.$set["cities.$.lat"] = lat;
                         }
                         if (lng) {
-                            update.$set["cities.$.lng"]= lng;
+                            update.$set["cities.$.lng"] = lng;
                         }
                         let ack = await getDB().collection(DB_REL.countries)
-                            .updateOne(
-                                { "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
+                            .updateOne({ "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
                                 update
                             );
                         sendSuccess(res, ack);
@@ -888,7 +973,7 @@ async function main() {
                 }
             }
         }
-    });    
+    });
 
     app.delete("/country/city", async function(req, res) {
         let { countryId, cityId } = req.body;
@@ -896,7 +981,7 @@ async function main() {
 
         if (!countryId || !ObjectId.isValid(countryId)) {
             idValidation.push({ field: "countryId", value: countryId, error: ERROR_TEMPLATE.id });
-        } 
+        }
         if (!cityId || !ObjectId.isValid(cityId)) {
             idValidation.push({ field: "cityId", value: cityId, error: ERROR_TEMPLATE.id });
         }
@@ -906,10 +991,7 @@ async function main() {
         } else {
             try {
                 let ack = await getDB().collection(DB_REL.countries)
-                    .updateOne(
-                        { "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) },
-                        { $pull: { cities: {"_id": ObjectId(cityId) }} }
-                    );
+                    .updateOne({ "_id": ObjectId(countryId), "cities._id": ObjectId(cityId) }, { $pull: { cities: { "_id": ObjectId(cityId) } } });
                 sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.deleteEmbed(DB_REL.countries, cityId, countryId));
@@ -1027,10 +1109,10 @@ async function main() {
 
             if (existCategory) {
                 try {
-                    let validation = await validateSubCategories({ categoryValue: existCategory[0].value, subcats: [{name, value}] });
+                    let validation = await validateSubCategories({ categoryValue: existCategory[0].value, subcats: [{ name, value }] });
                     if (!validation.length) {
                         let update = {
-                            $push: { 
+                            $push: {
                                 subcats: {
                                     _id: new ObjectId(),
                                     name,
@@ -1057,7 +1139,7 @@ async function main() {
 
         if (!catId || !ObjectId.isValid(catId)) {
             idValidation.push({ field: "catId", value: catId, error: ERROR_TEMPLATE.id });
-        } 
+        }
         if (!subcatId || !ObjectId.isValid(subcatId)) {
             idValidation.push({ field: "subcatId", value: subcatId, error: ERROR_TEMPLATE.id });
         }
@@ -1065,7 +1147,7 @@ async function main() {
         if (idValidation) {
             sendInvalidError(res, idValidation);
         } else {
-            let existCategory = await getCategories({ catId, subcat: subcatId});
+            let existCategory = await getCategories({ catId, subcat: subcatId });
 
             if (existCategory) {
                 try {
@@ -1089,7 +1171,7 @@ async function main() {
                 }
             }
         }
-    });    
+    });
 
     app.delete("/category/subcat", async function(req, res) {
         let { catId, subcatId } = req.body;
@@ -1097,7 +1179,7 @@ async function main() {
 
         if (!catId || !ObjectId.isValid(catId)) {
             idValidation.push({ field: "catId", value: catId, error: ERROR_TEMPLATE.id });
-        } 
+        }
         if (!subcatId || !ObjectId.isValid(subcatId)) {
             idValidation.push({ field: "subcatId", value: subcatId, error: ERROR_TEMPLATE.id });
         }
@@ -1107,16 +1189,13 @@ async function main() {
         } else {
             try {
                 let ack = await getDB().collection(DB_REL.categories)
-                    .updateOne(
-                        { "_id": ObjectId(catId), "subcats._id": ObjectId(subcatId) },
-                        { $pull: { subcats: {"_id": ObjectId(subcatId) }} }
-                    );
+                    .updateOne({ "_id": ObjectId(catId), "subcats._id": ObjectId(subcatId) }, { $pull: { subcats: { "_id": ObjectId(subcatId) } } });
                 sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.deleteEmbed(DB_REL.categories, subcatId, catId));
             }
         }
-    });    
+    });
 
     app.get("/articles", async function(req, res) {
         let { articleId } = req.query;
@@ -1175,7 +1254,7 @@ async function main() {
         let { articleId } = req.body;
 
         if (!ObjectId.isValid(articleId)) {
-            sendInvalidError(res, [{field: "articleId", value: articleId, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
                 let validation = await validateArticle(req.body);
@@ -1186,7 +1265,7 @@ async function main() {
 
                     contributor.displayName = contributor.displayName || contributor.name;
                     contributor.isLastMod = true;
-                    
+
                     if (title) {
                         update.$set.title = title;
                     }
@@ -1207,7 +1286,7 @@ async function main() {
                     }
                     if (contributor) {
                         update.$set.contributor = contributor;
-                    }  
+                    }
 
                     let ack = await getDB().collection(DB_REL.articles)
                         .updateOne({ "_id": ObjectId(articleId) }, update);
@@ -1241,7 +1320,7 @@ async function main() {
         let validation = [];
 
         if (!articleId || !ObjectId.isValid(articleId)) {
-            validation.push({field: "articleId", value: articleId, error: ERROR_TEMPLATE.id});
+            validation.push({ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id });
         } else {
             if (!email) {
                 validation.push({
@@ -1254,14 +1333,14 @@ async function main() {
                     value: email,
                     error: ERROR_TEMPLATE.email("Contributor Email")
                 });
-            }    
+            }
         }
 
         if (validation) {
             sendInvalidError(res, validation);
         } else {
             try {
-                let article = await getArticleContributors({articleId, email});
+                let article = await getArticleContributors({ articleId, email });
                 sendSuccess(res, article);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "contributors", id));
@@ -1273,14 +1352,14 @@ async function main() {
         let { articleId, rating } = req.body;
 
         if (!articleId || !ObjectId.isValid(articleId)) {
-            sendInvalidError(res, [{field: "articleId", value: articleId, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             let existArticle = await getArticles({ articleId });
 
             if (existArticle) {
                 try {
                     let validation = [];
-    
+
                     if (!rating) {
                         validation.push({
                             field: "rating",
@@ -1299,7 +1378,7 @@ async function main() {
                             error: "Rating cannot be less than 0 or more than 5",
                         });
                     }
-    
+
                     if (!validation.length) {
                         let update = {
                             $set: { avg: rating },
@@ -1323,14 +1402,14 @@ async function main() {
         let { articleId, name, content, email } = req.body;
 
         if (!articleId || !ObjectId.isValid(articleId)) {
-            sendInvalidError(res, [{field: "articleId", value: articleId, error: ERROR_TEMPLATE.id}]);
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             let existArticle = await getArticles({ articleId });
 
             if (existArticle) {
                 try {
                     let validation = [];
-    
+
                     if (!name) {
                         validation.push({
                             field: "name",
@@ -1361,10 +1440,10 @@ async function main() {
                             error: ERROR_TEMPLATE.required("Comment Content")
                         });
                     }
-    
+
                     if (!validation.length) {
                         let update = {
-                            $push: { 
+                            $push: {
                                 comments: {
                                     _id: new ObjectId(),
                                     name,
