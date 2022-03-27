@@ -632,6 +632,13 @@ async function main() {
         } else {
             let { displayName, name: cName, email: cEmail } = contributor;
             if (displayName) {
+                if (displayName.length > 80) {
+                    validation.push({
+                        field: "contributor.displayName",
+                        value: displayName,
+                        error: ERROR_TEMPLATE.length("Article Contributor Display Name", 80)
+                    });
+                }
                 if (REGEX.spaces.test(displayName)) {
                     validation.push({
                         field: "contributor.displayName",
@@ -653,6 +660,13 @@ async function main() {
                     error: ERROR_TEMPLATE.required("Article Contributor Name")
                 });
             } else {
+                if (cName.length > 80) {
+                    validation.push({
+                        field: "contributor.name",
+                        value: cName,
+                        error: ERROR_TEMPLATE.length("Article Contributor Name", 80)
+                    });
+                }
                 if (REGEX.spaces.test(cName)) {
                     validation.push({
                         field: "contributor.name",
