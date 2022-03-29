@@ -50,7 +50,7 @@ const ERROR_TEMPLATE = {
 
 async function main() {
     await connect(process.env.MONGO_URI, DB_REL.name);
-    await createArticlesIndex();
+    await createCollectionIndex();
 
     function sendSuccess(res, results) {
         res.status(200);
@@ -73,7 +73,7 @@ async function main() {
         });
     }
 
-    async function createArticlesIndex() {
+    async function createCollectionIndex() {
         await getDB().collection(DB_REL.articles)
             .createIndex({ title: "text", description: "text", "details.content": "text" }, { name: "ArticlesSearchIndex" });
 
