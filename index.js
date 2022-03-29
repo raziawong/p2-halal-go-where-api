@@ -268,6 +268,48 @@ async function main() {
         return articles;
     }
 
+    async function getArticlesTags({ articleId }) {
+        let criteria = {};
+        let projectOpt = {
+            projection: {
+                tags: 1,
+                createdDate: 1,
+                lastModified: 1
+            }
+        };
+
+        if (articleId) {
+            criteria._id = ObjectId(articleId);
+        }
+
+        criteria = {...criteria, "tags.0": { $exists: true } };
+
+        let article = await getDB().collection(DB_REL.articles)
+            .find(criteria, projectOpt).toArray();
+
+        return article;
+    }
+
+    async function getArticlesCountries({ articleId }) {
+        let criteria = {};
+        let countries = [];
+
+        if (articleId) {
+            criteria._id = ObjectId(articleId);
+        }
+
+        let articles = await getDB().collection(DB_REL.articles)
+            .find(criteria, { projection: { location: 1} }).toArray();
+        countries = await Promise.all(articles.map(async (a) => {
+            let c = await getCountries({ countryId: a.location.countryId, city: a.location.cityId}, true);
+            if (c.length) {
+                return c[0];
+            }
+        }));
+
+        return countries;
+    }
+
     async function getArticleContributors({ articleId, email }) {
         let criteria = {};
         let projectOpt = {
@@ -289,28 +331,6 @@ async function main() {
                 $elemMatch: { email }
             }
         }
-
-        let article = await getDB().collection(DB_REL.articles)
-            .find(criteria, projectOpt).toArray();
-
-        return article;
-    }
-
-    async function getArticleTags({ articleId }) {
-        let criteria = {};
-        let projectOpt = {
-            projection: {
-                tags: 1,
-                createdDate: 1,
-                lastModified: 1
-            }
-        };
-
-        if (articleId) {
-            criteria._id = ObjectId(articleId);
-        }
-        
-        criteria = { ...criteria, "tags.0" : {$exists: true } };
 
         let article = await getDB().collection(DB_REL.articles)
             .find(criteria, projectOpt).toArray();
@@ -954,6 +974,26 @@ async function main() {
             }
         }
     });
+
+    app.get("/countries/cities/tagged", async function(req, res) {
+        let { articleId } = req.query;
+        let validation = [];
+
+        if (articleId && !ObjectId.isValid(articleId)) {
+            validation.push({ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (validation.length) {
+            sendInvalidError(res, validation);
+        } else {
+            try {
+                let countries = await getArticlesCountries({ articleId });
+                sendSuccess(res, countries);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles + " and " + DB_REL.countries));
+            }
+        }
+    });    
 
     app.post("/country/city", async function(req, res) {
         let { countryId, name, lat, lng } = req.body;
