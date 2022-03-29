@@ -136,7 +136,7 @@ async function main() {
         }
 
         let countries = await getDB().collection(DB_REL.countries)
-            .find(criteria, projectOpt).toArray();
+            .find(criteria, projectOpt).sort({ name: 1, "_id": 1 }).toArray();
 
         return countries;
     }
@@ -205,12 +205,12 @@ async function main() {
         }
 
         let categories = await getDB().collection(DB_REL.categories)
-            .find(criteria, projectOpt).toArray();
+            .find(criteria, projectOpt).sort({ name: 1, "_id": 1 }).toArray();
 
         return categories;
     }
 
-    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds }) {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" }) {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -224,6 +224,8 @@ async function main() {
                 lastModified: 1
             }
         };
+        let sortOpt = sortField === "title" ? { title: sortOrder === "asc" ? 1 : -1, "_id": 1 } : {
+            [sortField]: sortOrder === "asc" ? 1 : -1, title: 1 };
 
         if (articleId) {
             criteria._id = ObjectId(articleId);
@@ -255,7 +257,7 @@ async function main() {
         }
 
         let articles = await getDB().collection(DB_REL.articles)
-            .find(criteria, projectOpt).toArray();
+            .find(criteria, projectOpt).sort(sortOpt).toArray();
 
         return articles;
     }
@@ -1249,14 +1251,15 @@ async function main() {
         }
     });
 
-    app.get("/articles", async function(req, res) {
+    app.get("/articles/:sortField?/:sortOrder?", async function(req, res) {
         let { articleId } = req.query;
+        let sortOpt = { sortField: req.params.sortField || "createdDate", sortOrder: req.params.sortField || "desc" };
 
         if (articleId && !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let articles = await getArticles(req.query);
+                let articles = await getArticles(req.query, sortOpt);
                 sendSuccess(res, articles);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles));
@@ -1264,7 +1267,7 @@ async function main() {
         }
     });
 
-    app.get("/articles/tags", async function (req, res) {
+    app.get("/articles/tags", async function(req, res) {
         let { articleId } = req.query;
         let validation = [];
 
@@ -1276,13 +1279,13 @@ async function main() {
             sendInvalidError(res, validation);
         } else {
             try {
-                let article = await getArticleTags({ articleId });
+                let article = await getArticlesTags({ articleId });
                 sendSuccess(res, article);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "tags", articleId ? articleId : ""));
             }
         }
-    })
+    });
 
     app.post("/article", async function(req, res) {
         try {
