@@ -255,6 +255,12 @@ async function main() {
                 }
             }
         }
+        if (ratingFrom !== undefined || ratingTo !== undefined) {
+            criteria["rating.avg"] = {
+                $gte: Number(ratingFrom) || 0,
+                $lte: Number(ratingTo) || 5
+            }
+        }
 
         let articles = await getDB().collection(DB_REL.articles)
             .find(criteria, projectOpt).sort(sortOpt).toArray();
