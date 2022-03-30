@@ -225,7 +225,9 @@ async function main() {
             }
         };
         let sortOpt = sortField === "title" ? { title: sortOrder === "asc" ? 1 : -1, "_id": 1 } : {
-            [sortField]: sortOrder === "asc" ? 1 : -1, title: 1 };
+            [sortField]: sortOrder === "asc" ? 1 : -1,
+            title: 1
+        };
 
         if (articleId) {
             criteria._id = ObjectId(articleId);
@@ -292,38 +294,59 @@ async function main() {
 
     async function getArticlesCountries({ articleId }) {
         let criteria = { [DB_REL.articles]: { $ne: [] } };
-
         if (articleId) {
             criteria["articles._id"] = ObjectId(articleId);
         }
 
-        let countries = await getDB().collection(DB_REL.countries).aggregate([
-            {
-              $project: {
+        let countries = await getDB().collection(DB_REL.countries).aggregate([{
+            $project: {
                 name: 1,
                 code: 1,
+                // first convert cities ObjectIds to String
                 cities: {
-                  $map: {
-                    input: "$cities",
-                    in: {
-                      "_id": { $toString: "$$this._id" },
-                      name: "$$this.name"
+                    $map: {
+                        input: "$cities",
+                        in: {
+                            "_id": { $toString: "$$this._id" },
+                            name: "$$this.name"
+                        }
                     }
-                  }
                 }
-              }
-            }, {
-              $unwind: { path: '$cities' }
-            }, {
-              $lookup: {
+            }
+        }, {
+            // to use each element in cities  
+            $unwind: { path: "$cities" }
+        }, {
+            $lookup: {
+                // join with articles collection based on city id found in each cities element   
                 from: DB_REL.articles,
-                localField: 'cities._id',
-                foreignField: 'location.cityId',
+                localField: "cities._id",
+                foreignField: "location.cityId",
                 as: DB_REL.articles
-              }
-            }, { $match: criteria }
-          ]).toArray();
-
+            }
+        }, {
+            $match: criteria
+        }, {
+            $group: {
+                // group by country object
+                _id: {
+                    _id: "$_id",
+                    name: "$name",
+                    code: "$code"
+                },
+                cities: {
+                    $push: "$cities"
+                }
+            }
+        }, {
+            $project: {
+                // project again
+                name: "$_id.name",
+                _id: "$_id._id",
+                code: "$_id.code",
+                cities: 1
+            }
+        }]).toArray();
         return countries;
     }
 
@@ -1010,7 +1033,7 @@ async function main() {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles + " and " + DB_REL.countries));
             }
         }
-    });    
+    });
 
     app.post("/country/city", async function(req, res) {
         let { countryId, name, lat, lng } = req.body;
