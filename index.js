@@ -291,21 +291,38 @@ async function main() {
     }
 
     async function getArticlesCountries({ articleId }) {
-        let criteria = {};
-        let countries = [];
+        let criteria = { [DB_REL.articles]: { $ne: [] } };
 
         if (articleId) {
-            criteria._id = ObjectId(articleId);
+            criteria["articles._id"] = ObjectId(articleId);
         }
 
-        let articles = await getDB().collection(DB_REL.articles)
-            .find(criteria, { projection: { location: 1} }).toArray();
-        countries = await Promise.all(articles.map(async (a) => {
-            let c = await getCountries({ countryId: a.location.countryId, city: a.location.cityId}, true);
-            if (c.length) {
-                return c[0];
-            }
-        }));
+        let countries = await getDB().collection(DB_REL.countries).aggregate([
+            {
+              $project: {
+                name: 1,
+                code: 1,
+                cities: {
+                  $map: {
+                    input: "$cities",
+                    in: {
+                      "_id": { $toString: "$$this._id" },
+                      name: "$$this.name"
+                    }
+                  }
+                }
+              }
+            }, {
+              $unwind: { path: '$cities' }
+            }, {
+              $lookup: {
+                from: DB_REL.articles,
+                localField: 'cities._id',
+                foreignField: 'location.cityId',
+                as: DB_REL.articles
+              }
+            }, { $match: criteria }
+          ]).toArray();
 
         return countries;
     }
