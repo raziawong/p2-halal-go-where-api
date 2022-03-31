@@ -236,13 +236,12 @@ async function main() {
             criteria.$text = { $search: text };
         }
         if (countryId) {
-            criteria.location = { countryId };
+            criteria['location.countryId'] = countryId;
         }
         if (cityId) {
-            criteria.location = { cityId };
+            criteria['location.cityId'] = cityId;
         }
         if (catIds) {
-            catIds = catIds.split(",");
             criteria.categories = {
                 $elemMatch: {
                     catId: { $in: catIds }
@@ -250,7 +249,6 @@ async function main() {
             }
         }
         if (subcatIds) {
-            subcatIds = subcatIds.split(",");
             criteria.categories = {
                 $elemMatch: {
                     subcatIds: { $in: subcatIds }
@@ -263,7 +261,7 @@ async function main() {
                 $lte: Number(ratingTo) || 5
             }
         }
-
+        
         let articles = await getDB().collection(DB_REL.articles)
             .find(criteria, projectOpt).sort(sortOpt).toArray();
 
