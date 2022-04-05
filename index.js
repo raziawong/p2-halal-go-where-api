@@ -1059,7 +1059,7 @@ async function main() {
     });
 
     app.delete("/country", async function(req, res) {
-        let { countryId } = req.body;
+        let { countryId } = req.query;
 
         if (!ObjectId.isValid(countryId)) {
             sendInvalidError(res, [{ field: "_id", value: countryId, error: ERROR_TEMPLATE.id }]);
@@ -1189,7 +1189,7 @@ async function main() {
     });
 
     app.delete("/country/city", async function(req, res) {
-        let { countryId, cityId } = req.body;
+        let { countryId, cityId } = req.query;
         let idValidation = [];
 
         if (!countryId || !ObjectId.isValid(countryId)) {
@@ -1283,7 +1283,7 @@ async function main() {
     });
 
     app.delete("/category", async function(req, res) {
-        let { catId } = req.body;
+        let { catId } = req.query;
 
         if (!catId || !ObjectId.isValid(catId)) {
             sendInvalidError(res, [{ field: "catId", value: catId, error: ERROR_TEMPLATE.id }]);
@@ -1387,7 +1387,7 @@ async function main() {
     });
 
     app.delete("/category/subcat", async function(req, res) {
-        let { catId, subcatId } = req.body;
+        let { catId, subcatId } = req.query;
         let idValidation = [];
 
         if (!catId || !ObjectId.isValid(catId)) {
@@ -1547,13 +1547,13 @@ async function main() {
     });
 
     app.delete("/article", async function(req, res) {
-        let { articleId } = req.body;
+        let { articleId } = req.query;
 
         if (!articleId || !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let ack = await deleteDocument(id, DB_REL.articles);
+                let ack = await deleteDocument(articleId, DB_REL.articles);
                 sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.articles, articleId));
