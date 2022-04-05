@@ -22,6 +22,7 @@ const REGEX = {
     spaces: new RegExp(/^[\s]*$/),
     displayName: new RegExp(/^[A-Za-zÀ-ȕ\s\-]*$/),
     optionValue: new RegExp(/^[A-Za-z0-9\-]*$/),
+    alphaNumeric: new RegExp(/^[A-Za-zÀ-ȕ0-9\-]*$/),
     email: new RegExp(/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/),
     url: new RegExp(/^[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/)
 };
@@ -39,9 +40,11 @@ const ERROR_TEMPLATE = {
     required: field => `${field} is required`,
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
     spaces: field => `${field} cannot contain only space(s)`,
+    alphaNumeric: field => `${field} can only be alphanumeric inclusive of spaces and -`,
     special: field => `${field} cannot contain special characters`,
     specialSpace: field => `${field} cannot contain special characters and/or spaces`,
-    length: (field, length) => `${field} cannot exceed ${length} characters including spaces`,
+    maxLength: (field, length) => `${field} cannot exceed ${length} characters including spaces`,
+    minLength: (field, length) => `${field} must be at least ${length}`,
     email: field => `${field} is not a valid email address`,
     url: field => `${field} is not a valid URL`,
     exists: (field, id, collection) => `${field} must be unique and it already exists, please do update on ${id} in ${collection} collection instead`,
@@ -210,7 +213,7 @@ async function main() {
         return categories;
     }
 
-    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" }) {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" }, view="listing") {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -218,12 +221,33 @@ async function main() {
                 description: 1,
                 photos: 1,
                 tags: 1,
-                location: 1,
+                "location.countryId": 1,
+                "location.cityId": 1,
                 categories: 1,
                 createdDate: 1,
                 lastModified: 1
             }
         };
+
+        if (view !== "listing") {
+            projectOpt.projection = {
+                title: 1,
+                description: 1,
+                photos: 1,
+                tags: 1,
+                location: 1,
+                categories: 1,
+                details: 1,
+                allowPublic: 1,
+                "contributors.displayName": 1,
+                "contributors.isAuthor": 1,
+                rating: 1,
+                isLock: 1,
+                createdDate: 1,
+                lastModified: 1
+            };
+        }
+
         let sortOpt = sortField === "title" ? { title: sortOrder === "asc" ? 1 : -1, "_id": 1 } : {
             [sortField]: sortOrder === "asc" ? 1 : -1,
             title: 1
@@ -261,10 +285,9 @@ async function main() {
                 $lte: Number(ratingTo) || 5
             }
         }
-        
-        let articles = await getDB().collection(DB_REL.articles)
-            .find(criteria, projectOpt).sort(sortOpt).toArray();
 
+        let collection = getDB().collection(DB_REL.articles);
+        let articles = await collection.find(criteria, projectOpt).sort(sortOpt).toArray();
         return articles;
     }
 
@@ -654,11 +677,17 @@ async function main() {
                     error: ERROR_TEMPLATE.spaces("Article Title")
                 });
             }
-            if (title.length > 50) {
+            if (title.length > 100) {
                 validation.push({
                     field: "title",
                     value: title,
-                    error: ERROR_TEMPLATE.length("Article Title", "50")
+                    error: ERROR_TEMPLATE.maxLength("Article Title", 100)
+                });
+            } else if (title.length < 10) {
+                validation.push({
+                    field: "title",
+                    value: title,
+                    error: ERROR_TEMPLATE.minLength("Article Title", 10)
                 });
             }
             if (!REGEX.displayName.test(title)) {
@@ -682,11 +711,17 @@ async function main() {
                     error: ERROR_TEMPLATE.spaces("Article Description")
                 });
             }
-            if (description.length > 150) {
+            if (description.length > 200) {
                 validation.push({
                     field: "description",
                     value: description,
-                    error: ERROR_TEMPLATE.length("Article Description", "150")
+                    error: ERROR_TEMPLATE.maxLength("Article Description", 200)
+                });
+            } else if (description.length < 10) {
+                validation.push({
+                    field: "description",
+                    value: description,
+                    error: ERROR_TEMPLATE.minLength("Article Title", 10)
                 });
             }
         }
@@ -703,11 +738,11 @@ async function main() {
         }
         if (tags) {
             tags.map(t => {
-                if (!REGEX.displayName.test(t)) {
+                if (!REGEX.alphaNumeric.test(t)) {
                     validation.push({
                         field: "tags.$",
                         value: t,
-                        error: ERROR_TEMPLATE.special("Article Tag")
+                        error: ERROR_TEMPLATE.alphaNumeric("Article Tag")
                     });
                 }
             });
@@ -724,7 +759,13 @@ async function main() {
                     validation.push({
                         field: "contributor.displayName",
                         value: displayName,
-                        error: ERROR_TEMPLATE.length("Article Contributor Display Name", 80)
+                        error: ERROR_TEMPLATE.maxLength("Article Contributor Display Name", 80)
+                    });
+                } else if (displayName.length < 3) {
+                    validation.push({
+                        field: "contributor.displayName",
+                        value: displayName,
+                        error: ERROR_TEMPLATE.minLength("Article Contributor Display Name", 3)
                     });
                 }
                 if (REGEX.spaces.test(displayName)) {
@@ -752,7 +793,13 @@ async function main() {
                     validation.push({
                         field: "contributor.name",
                         value: cName,
-                        error: ERROR_TEMPLATE.length("Article Contributor Name", 80)
+                        error: ERROR_TEMPLATE.maxLength("Article Contributor Name", 80)
+                    });
+                } else if (cName.length < 3) {
+                    validation.push({
+                        field: "contributor.name",
+                        value: cName,
+                        error: ERROR_TEMPLATE.minLength("Article Contributor Name", 3)
                     });
                 }
                 if (REGEX.spaces.test(cName)) {
@@ -832,6 +879,12 @@ async function main() {
                     value: address,
                     error: ERROR_TEMPLATE.spaces("Article Location Address")
                 });
+            } else if (address.length < 5) {
+                validation.push({
+                    field: "address",
+                    value: address,
+                    error: ERROR_TEMPLATE.minLength("Article Location Address", 5)
+                });
             }
         }
         if (!categories) {
@@ -883,6 +936,19 @@ async function main() {
                             field: "details.sectionName",
                             value: d.sectionName,
                             error: ERROR_TEMPLATE.required("Article Section Name")
+                        });
+                    }
+                    if (d.sectionName.length > 100) {
+                        validation.push({
+                            field: "details.sectionName",
+                            value: d.sectionName,
+                            error: ERROR_TEMPLATE.maxLength("Article Section Name", 100)
+                        });
+                    } else if (d.sectionName.length < 5) {
+                        validation.push({
+                            field: "details.sectionName",
+                            value: d.sectionName,
+                            error: ERROR_TEMPLATE.minLength("Article Section Name", 5)
                         });
                     }
                     if (!d.content) {
@@ -1335,7 +1401,7 @@ async function main() {
         }
     });
 
-    app.get("/articles/:sortField?/:sortOrder?", async function(req, res) {
+    app.get("/articles/:viewType/:sortField?/:sortOrder?", async function(req, res) {
         let { articleId } = req.query;
         let sortOpt = { sortField: req.params.sortField || "createdDate", sortOrder: req.params.sortField || "desc" };
 
@@ -1343,7 +1409,7 @@ async function main() {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let articles = await getArticles(req.query, sortOpt);
+                let articles = await getArticles(req.query, sortOpt, req.params.viewType);
                 sendSuccess(res, articles);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles));
@@ -1486,7 +1552,7 @@ async function main() {
                     field: "email",
                     error: ERROR_TEMPLATE.required("Contributor Email")
                 });
-            } else if (REGEX.email.test(email) || typeof email !== string) {
+            } else if (!REGEX.email.test(email) || typeof email !== "string") {
                 validation.push({
                     field: "email",
                     value: email,
@@ -1495,7 +1561,7 @@ async function main() {
             }
         }
 
-        if (validation) {
+        if (validation.length) {
             sendInvalidError(res, validation);
         } else {
             try {
