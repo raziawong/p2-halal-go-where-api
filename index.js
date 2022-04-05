@@ -829,6 +829,15 @@ async function main() {
                     value: cEmail,
                     error: ERROR_TEMPLATE.email("Article Contributor Email")
                 });
+            } else if (articleId && allowPubic) {
+                let checkContributor = await getArticleContributors({ articleId, email: cEmail });
+                if (checkContributor.length) {
+                    validation.push({
+                        field: "contributor.email",
+                        value: cEmail,
+                        error: "Article Contributor Email must be unique, and it was used to registered for article contribution"
+                    });
+                }
             }
         }
         if (!location) {
@@ -1486,7 +1495,7 @@ async function main() {
                 let article = await getArticles({ articleId });
 
                 if (article?.length) {
-                    let validation = await validateArticle(req.body);
+                    let validation = await validateArticle({...req.body, allowPublic: article[0].allowPubic});
 
                     if (!validation.length) {
                         let { title, description, details, photos, tags, categories, location, contributor } = req.body;
@@ -1514,7 +1523,10 @@ async function main() {
                             update.$set.location = {...location };
                         }
                         if (article[0].allowPublic && contributor.name && contributor.email) {
-                            let checkContributor = await getArticleContributors({ articleId, email: contributor["email"] });
+                            article[0].contributors?.map(ct => {
+                                ct.isLastMod = false;
+                            });
+                            
                             if (!checkContributor.length) {
                                 contributor.displayName = contributor.displayName || contributor.name;
                                 contributor.isLastMod = true;
