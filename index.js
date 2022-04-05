@@ -22,7 +22,7 @@ const REGEX = {
     spaces: new RegExp(/^[\s]*$/),
     displayName: new RegExp(/^[A-Za-zÀ-ȕ\s\-]*$/),
     optionValue: new RegExp(/^[A-Za-z0-9\-]*$/),
-    alphaNumeric: new RegExp(/^[A-Za-zÀ-ȕ0-9\-]*$/),
+    alphaNumeric: new RegExp(/^[A-Za-zÀ-ȕ0-9\s\-]*$/),
     email: new RegExp(/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/),
     url: new RegExp(/^[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/)
 };
@@ -44,7 +44,7 @@ const ERROR_TEMPLATE = {
     special: field => `${field} cannot contain special characters`,
     specialSpace: field => `${field} cannot contain special characters and/or spaces`,
     maxLength: (field, length) => `${field} cannot exceed ${length} characters including spaces`,
-    minLength: (field, length) => `${field} must be at least ${length}`,
+    minLength: (field, length) => `${field} must be at least ${length} characters`,
     email: field => `${field} is not a valid email address`,
     url: field => `${field} is not a valid URL`,
     exists: (field, id, collection) => `${field} must be unique and it already exists, please do update on ${id} in ${collection} collection instead`,
@@ -213,7 +213,7 @@ async function main() {
         return categories;
     }
 
-    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" }, view="listing") {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" }, view = "listing") {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -314,7 +314,8 @@ async function main() {
     }
 
     async function getArticlesCountries({ articleId }) {
-        let criteria = { [DB_REL.articles]: { $ne: [] } };
+        let criteria = {
+            [DB_REL.articles]: { $ne: [] } };
         if (articleId) {
             criteria["articles._id"] = ObjectId(articleId);
         }
@@ -661,7 +662,7 @@ async function main() {
         return validation;
     }
 
-    async function validateArticle({ articleId, title, description, details, photos, tags, contributor, location, categories }, isNew = true) {
+    async function validateArticle({ articleId, title, description, details, photos, tags, contributor, location, categories, allowPubic }, isNew = true) {
         let validation = [];
 
         if (!title) {
@@ -747,12 +748,12 @@ async function main() {
                 }
             });
         }
-        if (!contributor) {
+        if (!articleId && !contributor) {
             validation.push({
                 field: "contributor",
                 error: ERROR_TEMPLATE.required("Article Contributor")
             });
-        } else {
+        } else if (!articleId || (allowPubic && contributor)) {
             let { displayName, name: cName, email: cEmail } = contributor;
             if (displayName) {
                 if (displayName.length > 80) {
@@ -1458,7 +1459,7 @@ async function main() {
                     categories,
                     createdDate: new Date(),
                     lastModified: new Date(),
-                    contributor,
+                    contributors: [contributor],
                     rating: { avg: 0, count: 0 },
                     comments: [],
                     toDelete: false,
@@ -1482,42 +1483,53 @@ async function main() {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let validation = await validateArticle(req.body);
+                let article = await getArticles({ articleId });
 
-                if (!validation.length) {
-                    let { title, description, details, photos, tags, categories, contributor } = req.body;
-                    let update = { $set: {} };
+                if (article?.length) {
+                    let validation = await validateArticle(req.body);
 
-                    contributor.displayName = contributor.displayName || contributor.name;
-                    contributor.isLastMod = true;
+                    if (!validation.length) {
+                        let { title, description, details, photos, tags, categories, location, contributor } = req.body;
+                        let update = { $set: {} };
 
-                    if (title) {
-                        update.$set.title = title;
-                    }
-                    if (description) {
-                        update.$set.title = title;
-                    }
-                    if (details) {
-                        update.$set.details = details;
-                    }
-                    if (photos) {
-                        update.$set.photos = photos;
-                    }
-                    if (tags) {
-                        update.$set.tags = tags;
-                    }
-                    if (categories) {
-                        update.$set.categories = categories;
-                    }
-                    if (contributor) {
-                        update.$set.contributor = contributor;
-                    }
+                        if (title) {
+                            update.$set.title = title;
+                        }
+                        if (description) {
+                            update.$set.description = description;
+                        }
+                        if (details) {
+                            update.$set.details = details;
+                        }
+                        if (photos) {
+                            update.$set.photos = [...photos];
+                        }
+                        if (tags) {
+                            update.$set.tags = [...tags];
+                        }
+                        if (categories) {
+                            update.$set.categories = [...categories];
+                        }
+                        if (location) {
+                            update.$set.location = {...location };
+                        }
+                        if (article[0].allowPublic && contributor.name && contributor.email) {
+                            let checkContributor = await getArticleContributors({ articleId, email: contributor["email"] });
+                            if (!checkContributor.length) {
+                                contributor.displayName = contributor.displayName || contributor.name;
+                                contributor.isLastMod = true;
+                                update.$push.contributors = contributor;
+                            }
+                        }
 
-                    let ack = await getDB().collection(DB_REL.articles)
-                        .updateOne({ "_id": ObjectId(articleId) }, update);
-                    sendSuccess(res, ack);
+                        let ack = await getDB().collection(DB_REL.articles)
+                            .updateOne({ "_id": ObjectId(articleId) }, update);
+                        sendSuccess(res, ack);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
                 } else {
-                    sendInvalidError(res, validation);
+                    sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.notExist("Article", DB_REL.articles) }])
                 }
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.update(DB_REL.articles, articleId));
