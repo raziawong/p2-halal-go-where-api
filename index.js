@@ -242,7 +242,6 @@ async function main() {
                 "contributors.displayName": 1,
                 "contributors.isAuthor": 1,
                 rating: 1,
-                isLock: 1,
                 createdDate: 1,
                 lastModified: 1
             };
@@ -1470,9 +1469,7 @@ async function main() {
                     lastModified: new Date(),
                     contributors: [contributor],
                     rating: { avg: 0, count: 0 },
-                    comments: [],
-                    toDelete: false,
-                    isLock: false
+                    comments: []
                 };
 
                 let ack = await getDB().collection(DB_REL.articles).insertOne(insert);
