@@ -213,7 +213,7 @@ async function main() {
         return categories;
     }
 
-    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" }, view = "listing") {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" } = {}, view = "listing") {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -314,7 +314,8 @@ async function main() {
 
     async function getArticlesCountries({ articleId }) {
         let criteria = {
-            [DB_REL.articles]: { $ne: [] } };
+            [DB_REL.articles]: { $ne: [] }
+        };
         if (articleId) {
             criteria["articles._id"] = ObjectId(articleId);
         }
@@ -1492,7 +1493,7 @@ async function main() {
                 let article = await getArticles({ articleId });
 
                 if (article?.length) {
-                    let validation = await validateArticle({...req.body, allowPublic: article[0].allowPubic});
+                    let validation = await validateArticle({...req.body, allowPublic: article[0].allowPubic });
 
                     if (!validation.length) {
                         let { title, description, details, photos, tags, categories, location, contributor } = req.body;
@@ -1523,7 +1524,7 @@ async function main() {
                             article[0].contributors?.map(ct => {
                                 ct.isLastMod = false;
                             });
-                            
+
                             if (!checkContributor.length) {
                                 contributor.displayName = contributor.displayName || contributor.name;
                                 contributor.isLastMod = true;
@@ -1594,6 +1595,28 @@ async function main() {
         }
     });
 
+    app.get("/article/rating", async function(req, res) {
+        let { articleId } = req.query;
+
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let criteria = {_id: ObjectId(articleId) };
+                let projectOpt = { projection :{
+                        rating: 1
+                    }
+                };
+                let article = await getDB().collection(DB_REL.articles)
+                    .find(criteria, projectOpt).toArray();
+                sendSuccess(res, article);
+
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "rating", articleId));
+            }
+        }
+    });
+
     app.put("/article/rating", async function(req, res) {
         let { articleId, rating } = req.body;
 
@@ -1624,15 +1647,14 @@ async function main() {
                             error: "Rating cannot be less than 0 or more than 5",
                         });
                     }
-
                     if (!validation.length) {
                         let update = {
-                            $set: { avg: rating },
-                            $inc: { count: 1 }
+                            $set: { "rating.avg": Number(rating) },
+                            $inc: { "rating.count": 1}
                         };
-                        let article = await getDB()
-                            .collection(DB_REL.articles)
-                            .updateOne({ "_id": ObjectId(id) }, update);
+
+                        let article = await getDB().collection(DB_REL.articles)
+                            .updateOne({ "_id": ObjectId(articleId) }, update);
                         sendSuccess(res, article);
                     } else {
                         sendInvalidError(res, validation);
