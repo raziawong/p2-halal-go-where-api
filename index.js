@@ -81,7 +81,13 @@ async function main() {
             .createIndex({ title: "text", description: "text", "details.content": "text" }, { name: "ArticlesSearchIndex" });
 
         await getDB().collection(DB_REL.articles)
-            .createIndex({ title: 1, createdDate: 1 }, { name: "ArticlesSortIndex" });
+            .createIndex({ title: 1, createdDate: 1, lastModified: 1 }, { name: "ArticlesSortIndex" });
+
+        await getDB().collection(DB_REL.countries)
+            .createIndex({ name: 1, code: 1}, { name: "CountriesSortIndex" });
+
+        await getDB().collection(DB_REL.categories)
+            .createIndex({ name: 1 }, { name: "CategoriesSortIndex" });
     }
 
     async function getCountries({ countryId, code, name, city }, showCity = false) {
@@ -249,8 +255,7 @@ async function main() {
         }
 
         let sortOpt = sortField === "title" ? { title: sortOrder === "asc" ? 1 : -1, "_id": 1 } : {
-            [sortField]: sortOrder === "asc" ? 1 : -1,
-            title: 1
+            [sortField]: sortOrder === "asc" ? 1 : -1
         };
 
         if (articleId) {
@@ -1494,7 +1499,7 @@ async function main() {
 
     app.get("/articles/:viewType/:sortField?/:sortOrder?", async function(req, res) {
         let { articleId } = req.query;
-        let sortOpt = { sortField: req.params.sortField || "createdDate", sortOrder: req.params.sortField || "desc" };
+        let sortOpt = { sortField: req.params.sortField || "createdDate", sortOrder: req.params.sortOrder || "desc" };
 
         if (articleId && !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
