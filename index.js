@@ -242,6 +242,7 @@ async function main() {
                 "contributors.displayName": 1,
                 "contributors.isAuthor": 1,
                 rating: 1,
+                comments: 1,
                 createdDate: 1,
                 lastModified: 1
             };
@@ -945,7 +946,7 @@ async function main() {
                         validation.push({
                             field: "details.sectionName",
                             value: d.sectionName,
-                            error: ERROR_TEMPLATE.required("Article Section Name")
+                            error: ERROR_TEMPLATE.special("Article Section Name")
                         });
                     }
                     if (d.sectionName.length > 100) {
@@ -981,6 +982,86 @@ async function main() {
 
         return validation;
     }
+
+    function validateComments({ title, content, name, email }) {
+        let validation = [];
+
+        if (title && !REGEX.displayName.test(title)) {
+            validation.push({
+                field: "title",
+                value: title,
+                error: ERROR_TEMPLATE.special("Comment Title")
+            });
+        } else if (title && title.length > 100) {
+            validation.push({
+                field: "title",
+                value: title,
+                error: ERROR_TEMPLATE.maxLength("Comment Title", 100)
+            });
+        } else if (title && title.length < 5) {
+            validation.push({
+                field: "title",
+                value: title,
+                error: ERROR_TEMPLATE.minLength("Comment Title", 5)
+            });
+        }
+        if (!name || REGEX.spaces.test(name)) {
+            validation.push({
+                field: "name",
+                error: ERROR_TEMPLATE.required("Comment Name")
+            });
+        } else if (!REGEX.displayName.test(name)) {
+            validation.push({
+                field: "name",
+                value: name,
+                error: ERROR_TEMPLATE.special("Comment Name")
+            });
+        } else if (name.length > 80) {
+            validation.push({
+                field: "name",
+                value: name,
+                error: ERROR_TEMPLATE.maxLength("Comment Name", 80)
+            });
+        } else if (name.length < 3) {
+            validation.push({
+                field: "name",
+                value: name,
+                error: ERROR_TEMPLATE.minLength("Comment Name", 3)
+            });
+        }
+        if (!email) {
+            validation.push({
+                field: "email",
+                error: ERROR_TEMPLATE.required("Comment Email")
+            });
+        } else if (!REGEX.email.test(email) || typeof email !== "string") {
+            validation.push({
+                field: "email",
+                value: email,
+                error: ERROR_TEMPLATE.email("Comment Email")
+            });
+        }
+        if (!content) {
+            validation.push({
+                field: "content",
+                error: ERROR_TEMPLATE.required("Comment Content")
+            });
+        } else if (content > 200) {
+            validation.push({
+                field: "content",
+                value: content,
+                error: ERROR_TEMPLATE.maxLength("Comment Content", 200)
+            });
+        } else if (content < 5) {
+            validation.push({
+                field: "content",
+                value: content,
+                error: ERROR_TEMPLATE.minLength("Comment Content", 5)
+            });
+        }
+
+        return validation;
+    }    
 
     app.get("/countries", async function(req, res) {
         let { countryId } = req.query;
@@ -1272,7 +1353,7 @@ async function main() {
                         update.$set.subcats = subcats;
                     }
                     let ack = await getDB().collection(DB_REL.categories)
-                        .updateOne({ "_id": ObjectId(id) }, update);
+                        .updateOne({ "_id": ObjectId(catId) }, update);
                     sendSuccess(res, ack);
                 } else {
                     sendInvalidError(res, validation);
@@ -1666,8 +1747,30 @@ async function main() {
         }
     });
 
+    app.get("/article/comments", async function(req, res) {
+        let { articleId } = req.query;
+
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            try {
+                let criteria = {_id: ObjectId(articleId) };
+                let projectOpt = { projection :{
+                        comments: 1
+                    }
+                };
+                let article = await getDB().collection(DB_REL.articles)
+                    .find(criteria, projectOpt).toArray();
+                sendSuccess(res, article);
+
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "comments", articleId));
+            }
+        }
+    });    
+
     app.post("/article/comment", async function(req, res) {
-        let { articleId, name, content, email } = req.body;
+        let { articleId, name, title, content, email } = req.body;
 
         if (!articleId || !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
@@ -1676,38 +1779,7 @@ async function main() {
 
             if (existArticle) {
                 try {
-                    let validation = [];
-
-                    if (!name) {
-                        validation.push({
-                            field: "name",
-                            error: ERROR_TEMPLATE.required("Comment Name")
-                        });
-                    } else if (!REGEX.displayName.test(name)) {
-                        validation.push({
-                            field: "name",
-                            value: name,
-                            error: ERROR_TEMPLATE.special("Comment Name")
-                        });
-                    }
-                    if (!email) {
-                        validation.push({
-                            field: "content",
-                            error: ERROR_TEMPLATE.required("Comment Email")
-                        });
-                    } else if (!REGEX.email.test(email)) {
-                        validation.push({
-                            field: "email",
-                            value: email,
-                            error: ERROR_TEMPLATE.email("Comment Email")
-                        });
-                    }
-                    if (!content) {
-                        validation.push({
-                            field: "content",
-                            error: ERROR_TEMPLATE.required("Comment Content")
-                        });
-                    }
+                    let validation = validateComments(req.body);
 
                     if (!validation.length) {
                         let update = {
@@ -1715,6 +1787,7 @@ async function main() {
                                 comments: {
                                     _id: new ObjectId(),
                                     name,
+                                    title,
                                     content,
                                     email,
                                     createdDate: new Date()
@@ -1722,7 +1795,7 @@ async function main() {
                             }
                         };
                         let article = await getDB().collection(DB_REL.articles)
-                            .updateOne({ "_id": ObjectId(id) }, update);
+                            .updateOne({ "_id": ObjectId(articleId) }, update);
                         sendSuccess(res, article);
                     } else {
                         sendInvalidError(res, validation);
