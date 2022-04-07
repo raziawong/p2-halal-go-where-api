@@ -56,8 +56,13 @@ async function main() {
     await createCollectionIndex();
 
     function sendSuccess(res, results) {
+        const response = results.totalCount ? {
+            results: [...results.data],
+            count: results.data.length,
+            totalCount: results.totalCount
+        } : { results, count: results.length};
         res.status(200);
-        res.json({ results, count: results.length });
+        res.json({ ...response });
     }
 
     function sendInvalidError(res, details) {
@@ -219,7 +224,7 @@ async function main() {
         return categories;
     }
 
-    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, { sortField = "createdDate", sortOrder = "desc" } = {}, view = "listing") {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, pageNum, { sortField = "createdDate", sortOrder = "desc" } = {}, view = "listing") {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -292,8 +297,10 @@ async function main() {
         }
 
         let collection = getDB().collection(DB_REL.articles);
-        let articles = await collection.find(criteria, projectOpt).sort(sortOpt).toArray();
-        return articles;
+        let articles = pageNum == 1 ? 
+            await collection.find(criteria, projectOpt).sort(sortOpt).limit(10).toArray() :
+            await collection.find(criteria, projectOpt).sort(sortOpt).skip((pageNum - 1) * 10).limit(10).toArray();
+        return {data: articles, totalCount: await collection.countDocuments()};
     }
 
     async function getArticlesTags({ articleId }) {
@@ -1497,38 +1504,20 @@ async function main() {
         }
     });
 
-    app.get("/articles/:viewType/:sortField?/:sortOrder?", async function(req, res) {
+    app.get("/articles/:viewType/:sortField?/:sortOrder?/:page?", async function(req, res) {
         let { articleId } = req.query;
-        let sortOpt = { sortField: req.params.sortField || "createdDate", sortOrder: req.params.sortOrder || "desc" };
+        let {sortField, sortOrder, page} = req.params;
+        let sortOpt = { sortField: sortField || "createdDate", sortOrder: sortOrder|| "desc" };
+        let pageNum = (!page || isNaN(page)) ? 1 : (Number(page) || 1);
 
         if (articleId && !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let articles = await getArticles(req.query, sortOpt, req.params.viewType);
+                let articles = await getArticles(req.query, pageNum, sortOpt, req.params.viewType);
                 sendSuccess(res, articles);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles));
-            }
-        }
-    });
-
-    app.get("/articles/tags", async function(req, res) {
-        let { articleId } = req.query;
-        let validation = [];
-
-        if (articleId && !ObjectId.isValid(articleId)) {
-            validation.push({ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id });
-        }
-
-        if (validation.length) {
-            sendInvalidError(res, validation);
-        } else {
-            try {
-                let article = await getArticlesTags({ articleId });
-                sendSuccess(res, article);
-            } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "tags", articleId ? articleId : ""));
             }
         }
     });
@@ -1644,6 +1633,26 @@ async function main() {
                 sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.articles, articleId));
+            }
+        }
+    });
+
+    app.get("/article/tags", async function(req, res) {
+        let { articleId } = req.query;
+        let validation = [];
+
+        if (articleId && !ObjectId.isValid(articleId)) {
+            validation.push({ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id });
+        }
+
+        if (validation.length) {
+            sendInvalidError(res, validation);
+        } else {
+            try {
+                let article = await getArticlesTags({ articleId });
+                sendSuccess(res, article);
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.readEmbed(DB_REL.articles, "tags", articleId ? articleId : ""));
             }
         }
     });
