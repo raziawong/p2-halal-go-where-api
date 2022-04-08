@@ -224,7 +224,7 @@ async function main() {
         return categories;
     }
 
-    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, pageNum, { sortField = "createdDate", sortOrder = "desc" } = {}, view = "listing") {
+    async function getArticles({ articleId, text, countryId, cityId, catIds, subcatIds, ratingFrom, ratingTo }, view = "listing", pageNum=1, { sortField = "createdDate", sortOrder = "desc" } = {}) {
         let criteria = {};
         let projectOpt = {
             projection: {
@@ -300,7 +300,7 @@ async function main() {
         let articles = pageNum == 1 ? 
             await collection.find(criteria, projectOpt).sort(sortOpt).limit(10).toArray() :
             await collection.find(criteria, projectOpt).sort(sortOpt).skip((pageNum - 1) * 10).limit(10).toArray();
-        return {data: articles, totalCount: await collection.countDocuments()};
+        return {data: articles, totalCount: await collection.countDocuments(criteria)};
     }
 
     async function getArticlesTags({ articleId }) {
@@ -333,55 +333,67 @@ async function main() {
             criteria["articles._id"] = ObjectId(articleId);
         }
 
-        let countries = await getDB().collection(DB_REL.countries).aggregate([{
-            $project: {
+        let countries = await getDB()
+          .collection(DB_REL.countries)
+          .aggregate([
+            {
+              $project: {
                 name: 1,
                 code: 1,
                 // first convert cities ObjectIds to String
                 cities: {
-                    $map: {
-                        input: "$cities",
-                        in: {
-                            "_id": { $toString: "$$this._id" },
-                            name: "$$this.name"
-                        }
-                    }
-                }
-            }
-        }, {
-            // to use each element in cities  
-            $unwind: { path: "$cities" }
-        }, {
-            $lookup: {
-                // join with articles collection based on city id found in each cities element   
+                  $map: {
+                    input: "$cities",
+                    in: {
+                      _id: { $toString: "$$this._id" },
+                      name: "$$this.name",
+                    },
+                  },
+                },
+              },
+            },
+            {
+              // to use each element in cities
+              $unwind: { path: "$cities" },
+            },
+            {
+              $lookup: {
+                // join with articles collection based on city id found in each cities element
                 from: DB_REL.articles,
                 localField: "cities._id",
                 foreignField: "location.cityId",
-                as: DB_REL.articles
-            }
-        }, {
-            $match: criteria
-        }, {
-            $group: {
+                as: DB_REL.articles,
+              },
+            },
+            {
+              $match: criteria,
+            },
+            { $sort: { "cities.name": 1 } },
+            {
+              $group: {
                 // group by country object
                 _id: {
-                    _id: "$_id",
-                    name: "$name",
-                    code: "$code"
+                  _id: "$_id",
+                  name: "$name",
+                  code: "$code",
                 },
                 cities: {
-                    $push: "$cities"
-                }
-            }
-        }, {
-            $project: {
+                  $push: "$cities",
+                },
+              },
+            },
+            {
+              $project: {
                 // project again
                 name: "$_id.name",
                 _id: "$_id._id",
                 code: "$_id.code",
-                cities: 1
-            }
-        }]).toArray();
+                cities: 1,
+              },
+            },
+            { $sort: { name: 1 } },
+          ])
+          .toArray();
         return countries;
     }
 
@@ -392,7 +404,6 @@ async function main() {
                 title: 1,
                 "contributors.displayName": 1,
                 "contributors.isAuthor": 1,
-                "contributors.isLastMod": 1,
                 createdDate: 1,
                 lastModified: 1
             }
@@ -1073,8 +1084,8 @@ async function main() {
         }
 
         return validation;
-    }    
-
+    }
+    
     app.get("/countries", async function(req, res) {
         let { countryId } = req.query;
 
@@ -1514,7 +1525,7 @@ async function main() {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let articles = await getArticles(req.query, pageNum, sortOpt, req.params.viewType);
+                let articles = await getArticles(req.query, req.params.viewType, pageNum, sortOpt);
                 sendSuccess(res, articles);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.read(DB_REL.articles));
@@ -1530,7 +1541,6 @@ async function main() {
                 let { title, description, details, photos, tags, location, categories, allowPublic, contributor } = req.body;
                 contributor.displayName = contributor.displayName || contributor.name;
                 contributor.isAuthor = true;
-                contributor.isLastMod = true;
 
                 let insert = {
                     title,
@@ -1565,9 +1575,10 @@ async function main() {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
             try {
-                let article = await getArticles({ articleId });
+                let article = await getArticles({ articleId }, "details");
 
-                if (article?.length) {
+                if (article?.data?.length) {
+                    article = article.data;
                     let validation = await validateArticle({...req.body, allowPublic: article[0].allowPubic });
 
                     if (!validation.length) {
@@ -1596,15 +1607,9 @@ async function main() {
                             update.$set.location = {...location };
                         }
                         if (article[0].allowPublic && contributor.name && contributor.email) {
-                            article[0].contributors?.map(ct => {
-                                ct.isLastMod = false;
-                            });
-
-                            if (!checkContributor.length) {
-                                contributor.displayName = contributor.displayName || contributor.name;
-                                contributor.isLastMod = true;
-                                update.$push.contributors = contributor;
-                            }
+                            contributor.displayName = contributor.displayName || contributor.name;
+                            contributor.isAuthor = false;
+                            update.$push.contributors = contributor;
                         }
 
                         let ack = await getDB().collection(DB_REL.articles)
@@ -1720,7 +1725,7 @@ async function main() {
         } else {
             let existArticle = await getArticles({ articleId });
 
-            if (existArticle) {
+            if (existArticle?.data?.length) {
                 try {
                     let validation = [];
 
@@ -1791,7 +1796,7 @@ async function main() {
         } else {
             let existArticle = await getArticles({ articleId });
 
-            if (existArticle) {
+            if (existArticle?.data?.length) {
                 try {
                     let validation = validateComments(req.body);
 
