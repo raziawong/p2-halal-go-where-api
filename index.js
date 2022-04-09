@@ -16,6 +16,7 @@ const DB_REL = {
     countries: "countries",
     categories: "categories",
     articles: "articles",
+    collections: "collections"
 };
 
 const REGEX = {
@@ -263,7 +264,10 @@ async function main() {
             [sortField]: sortOrder === "asc" ? 1 : -1
         };
 
-        if (articleId) {
+        if (articleId && Array.isArray(articleId)) {
+            const ids = articleId.map(id => ObjectId(id));
+            criteria._id = { $in: ids };
+        } else if (articleId) {
             criteria._id = ObjectId(articleId);
         }
         if (text) {
@@ -423,6 +427,20 @@ async function main() {
 
         return article;
     }
+
+    async function getCurated({ curateEmail }) {
+        let criteria = {curateEmail: curateEmail};
+        return await getDB().collection(DB_REL.collections).findOne(criteria);
+    }
+
+    async function getCuratedArticles({ curateEmail }) {
+        const curatedList = await getCurated({curateEmail});
+        let articles = [];
+        if (curatedList && curatedList.hasOwnProperty("articleIds")) {
+            articles = await getArticles({articleId: curatedList.articleIds}, "listing");
+        }
+        return articles;
+    }    
 
     async function deleteDocument(id, collection) {
         return await getDB().collection(collection).deleteOne({ "_id": ObjectId(id) });
@@ -1085,6 +1103,23 @@ async function main() {
 
         return validation;
     }
+
+    function validateCurated({curateEmail}) {
+        let validation = [];
+        if (!curateEmail) {
+            validation.push({
+                field: "curateEmail",
+                error: ERROR_TEMPLATE.required("Curator's Email")
+            });
+        } else if (!REGEX.email.test(curateEmail) || typeof curateEmail !== "string") {
+            validation.push({
+                field: "curateEmail",
+                value: curateEmail,
+                error: ERROR_TEMPLATE.email("Curator's Email")
+            });
+        }
+        return validation;
+    }
     
     app.get("/countries", async function(req, res) {
         let { countryId } = req.query;
@@ -1259,7 +1294,7 @@ async function main() {
             idValidation.push({ field: "cityId", value: cityId, error: ERROR_TEMPLATE.id });
         }
 
-        if (idValidation) {
+        if (idValidation.length) {
             sendInvalidError(res, idValidation);
         } else {
             let existCountry = await getCountries({ countryId, city: cityId });
@@ -1822,9 +1857,98 @@ async function main() {
                 } catch (err) {
                     sendServerError(res, ERROR_TEMPLATE.createEmbed(DB_REL.articles, "comment", articleId));
                 }
+            } else {
+                sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }])
             }
         }
     });
+
+    app.get("/collection", async function(req, res){
+        let { curateEmail } = req.query;
+
+        try {
+            let validation = validateCurated({curateEmail});
+            if (!validation.length) {
+                let articles = await getCuratedArticles({ curateEmail });
+                sendSuccess(res, articles.data || []);
+            } else {
+                sendInvalidError(res, validation);
+            }
+        } catch (err) {
+            sendServerError(res, ERROR_TEMPLATE.read(DB_REL.collections));
+        }
+    });
+
+    app.post("/collection/item", async function(req, res){
+        let { curateEmail, articleId } = req.body;
+
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            const existCurated = await getCurated({curateEmail});
+
+            try {
+                let validation = validateCurated({curateEmail});
+                if (!validation.length) {
+                    let ack = {};
+                    if (existCurated) {
+                        if (existCurated.articleIds && !existCurated.articleIds.includes(articleId)) {
+                            ack = await getDB().collection(DB_REL.collections)
+                            .updateOne(
+                                { "_id": ObjectId(existCurated._id) }, 
+                                { $push: { articleIds: articleId } }
+                            );
+                        }
+                    } else {
+                        ack = await getDB().collection(DB_REL.collections)
+                        .insertOne({
+                            curateEmail,
+                            articleIds: [articleId] 
+                        });
+                    }
+                    sendSuccess(res, ack);
+                } else {
+                    sendInvalidError(res, validation);
+                }
+            } catch (err) {
+                sendServerError(res, ERROR_TEMPLATE.updateEmbed(DB_REL.collections, articleId, existCurated ? existCurated._id : ""));
+            }
+        }
+    });
+
+    app.delete("/collection/item", async function(req, res){
+        let { curateEmail, articleId } = req.query;
+
+        if (!articleId || !ObjectId.isValid(articleId)) {
+            sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
+        } else {
+            const existCurated = await getCurated({curateEmail});
+
+            if (existCurated && existCurated.hasOwnProperty("curateEmail")) {
+                try {
+                    let validation = validateCurated({curateEmail});
+                    if (!validation.length) {
+                        let ack = {};
+
+                        if (existCurated.articleIds && existCurated.articleIds.includes(articleId)) {
+                            ack = await getDB().collection(DB_REL.collections)
+                            .updateOne(
+                                { "_id": ObjectId(existCurated._id) }, 
+                                { $pull: { articleIds: articleId } }
+                            );
+                        }
+                        sendSuccess(res, ack);
+                    } else {
+                        sendInvalidError(res, validation);
+                    }
+                } catch (err) {
+                    sendServerError(res, ERROR_TEMPLATE.deleteEmbed(DB_REL.collections, articleId, existCurated._id));
+                }
+            } else {
+                sendInvalidError(res, [{ field: "curateEmail", value: curateEmail, error: "Email is not registered for private curation" }])
+            }
+        }
+    });    
 }
 
 main();
