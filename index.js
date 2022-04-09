@@ -94,6 +94,9 @@ async function main() {
 
         await getDB().collection(DB_REL.categories)
             .createIndex({ name: 1 }, { name: "CategoriesSortIndex" });
+
+        await getDB().collection(DB_REL.collections)
+            .createIndex({ curateEmail: 1 }, { unique: true, name: "CollectionsUniqueIndex" });
     }
 
     async function getCountries({ countryId, code, name, city }, showCity = false) {
@@ -428,16 +431,22 @@ async function main() {
         return article;
     }
 
-    async function getCurated({ curateEmail }) {
-        let criteria = {curateEmail: curateEmail};
-        return await getDB().collection(DB_REL.collections).findOne(criteria);
+    async function getCurated({ curateEmail, articleId }) {
+        let criteria = {}; 
+        if (curateEmail) {
+          criteria.curateEmail = curateEmail;
+        }
+        if (articleId) {
+          criteria.articleIds = { $in: articleId };
+        }
+        return await getDB().collection(DB_REL.collections).find(criteria).toArray();
     }
 
     async function getCuratedArticles({ curateEmail }) {
         const curatedList = await getCurated({curateEmail});
         let articles = [];
-        if (curatedList && curatedList.hasOwnProperty("articleIds")) {
-            articles = await getArticles({articleId: curatedList.articleIds}, "listing");
+        if (curatedList.length && curatedList[0].hasOwnProperty("articleIds")) {
+            articles = await getArticles({articleId: curatedList[0].articleIds}, "listing");
         }
         return articles;
     }    
@@ -1670,6 +1679,14 @@ async function main() {
         } else {
             try {
                 let ack = await deleteDocument(articleId, DB_REL.articles);
+                let existCurated = await getCurated({articleId});
+                if (existCurated?.length) {
+                    await getDB().collection(DB_REL.collections)
+                    .updateOne(
+                        { "_id": ObjectId(existCurated[0]._id) }, 
+                        { $pull: { articleIds: articleId } }
+                    );
+                }
                 sendSuccess(res, ack);
             } catch (err) {
                 sendServerError(res, ERROR_TEMPLATE.delete(DB_REL.articles, articleId));
@@ -1885,13 +1902,14 @@ async function main() {
         if (!articleId || !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
-            const existCurated = await getCurated({curateEmail});
+            let existCurated = await getCurated({curateEmail});
 
             try {
                 let validation = validateCurated({curateEmail});
                 if (!validation.length) {
                     let ack = {};
-                    if (existCurated) {
+                    if (existCurated.length) {
+                        existCurated = existCurated[0];
                         if (existCurated.articleIds && !existCurated.articleIds.includes(articleId)) {
                             ack = await getDB().collection(DB_REL.collections)
                             .updateOne(
@@ -1911,7 +1929,7 @@ async function main() {
                     sendInvalidError(res, validation);
                 }
             } catch (err) {
-                sendServerError(res, ERROR_TEMPLATE.updateEmbed(DB_REL.collections, articleId, existCurated ? existCurated._id : ""));
+                sendServerError(res, ERROR_TEMPLATE.updateEmbed(DB_REL.collections, articleId, existCurated ? existCurated[0]._id : ""));
             }
         }
     });
@@ -1922,9 +1940,10 @@ async function main() {
         if (!articleId || !ObjectId.isValid(articleId)) {
             sendInvalidError(res, [{ field: "articleId", value: articleId, error: ERROR_TEMPLATE.id }]);
         } else {
-            const existCurated = await getCurated({curateEmail});
+            let existCurated = await getCurated({curateEmail});
 
-            if (existCurated && existCurated.hasOwnProperty("curateEmail")) {
+            if (existCurated.length && existCurated[0].hasOwnProperty("curateEmail")) {
+                existCurated = existCurated[0];
                 try {
                     let validation = validateCurated({curateEmail});
                     if (!validation.length) {
