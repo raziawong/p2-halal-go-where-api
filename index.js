@@ -25,7 +25,7 @@ const REGEX = {
     optionValue: new RegExp(/^[A-Za-z0-9\-]*$/),
     alphaNumeric: new RegExp(/^[A-Za-zÀ-ȕ0-9\s\-]*$/),
     email: new RegExp(/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/),
-    url: new RegExp(/^[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/)
+    url: new RegExp(/^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/)
 };
 
 const ERROR_TEMPLATE = {
