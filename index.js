@@ -1130,6 +1130,10 @@ async function main() {
         return validation;
     }
     
+    app.get("/", async function(req, res) {
+        res.send("Muslim Go Where API")
+    });
+    
     app.get("/countries", async function(req, res) {
         let { countryId } = req.query;
 
