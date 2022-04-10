@@ -1624,15 +1624,15 @@ async function main() {
         } else {
             try {
                 let article = await getArticles({ articleId }, "details");
-
-                if (article?.data?.length) {
+                
+                if (article.totalCount) {
                     article = article.data;
                     let validation = await validateArticle({...req.body, allowPublic: article[0].allowPubic });
-
+                      
                     if (!validation.length) {
                         let { title, description, details, photos, tags, categories, location, contributor } = req.body;
                         let update = { $set: {} };
-
+                        
                         if (title) {
                             update.$set.title = title;
                         }
@@ -1654,7 +1654,7 @@ async function main() {
                         if (location) {
                             update.$set.location = {...location };
                         }
-                        if (article[0].allowPublic && contributor.name && contributor.email) {
+                        if (article[0].allowPublic && contributor && contributor.name && contributor.email) {
                             contributor.displayName = contributor.displayName || contributor.name;
                             contributor.isAuthor = false;
                             update.$push.contributors = contributor;
