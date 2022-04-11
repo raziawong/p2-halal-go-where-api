@@ -21,7 +21,7 @@ const DB_REL = {
 
 const REGEX = {
     spaces: new RegExp(/^[\s]*$/),
-    displayName: new RegExp(/^[A-Za-zÀ-ȕ\s\-]*$/),
+    displayName: new RegExp(/^[A-Za-zÀ-ȕ0-9\s-:,]*$/),
     optionValue: new RegExp(/^[A-Za-z0-9\-]*$/),
     alphaNumeric: new RegExp(/^[A-Za-zÀ-ȕ0-9\s\-]*$/),
     email: new RegExp(/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/),
@@ -42,7 +42,7 @@ const ERROR_TEMPLATE = {
     requiredDoc: (object, field) => `${object} needs to have at least one ${field}`,
     spaces: field => `${field} cannot contain only space(s)`,
     alphaNumeric: field => `${field} can only be alphanumeric inclusive of spaces and -`,
-    special: field => `${field} cannot contain special characters`,
+    special: field => `${field} cannot contain special characters except '-', ',', and/or ':' `,
     specialSpace: field => `${field} cannot contain special characters and/or spaces`,
     maxLength: (field, length) => `${field} cannot exceed ${length} characters including spaces`,
     minLength: (field, length) => `${field} must be at least ${length} characters`,
