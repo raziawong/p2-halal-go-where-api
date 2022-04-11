@@ -84,7 +84,7 @@ async function main() {
 
     async function createCollectionIndex() {
         await getDB().collection(DB_REL.articles)
-            .createIndex({ title: "text", description: "text", "details.content": "text" }, { name: "ArticlesSearchIndex" });
+            .createIndex({ title: "text", description: "text", "details.content": "text", tags: "text" }, { name: "ArticlesSearchIndex" });
 
         await getDB().collection(DB_REL.articles)
             .createIndex({ title: 1, createdDate: 1, lastModified: 1 }, { name: "ArticlesSortIndex" });
