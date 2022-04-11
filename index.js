@@ -1683,8 +1683,8 @@ async function main() {
         } else {
             try {
                 let ack = await deleteDocument(articleId, DB_REL.articles);
-                let existCurated = await getCurated({articleId});
-                if (existCurated?.length) {
+                let existCurated = await getCurated({articleId: [articleId]});
+                if (existCurated && existCurated.length) {
                     await getDB().collection(DB_REL.collections)
                     .updateOne(
                         { "_id": ObjectId(existCurated[0]._id) }, 
